@@ -4,6 +4,8 @@
  * from Admin → Email templates (stored in the email_templates table).
  */
 
+import { badge, button, details, emailLayout, headline, para, signOff } from './email-layout';
+
 export type EmailTemplateKey =
   | 'booking_request_received'
   | 'booking_approved'
@@ -24,6 +26,8 @@ export interface TemplateDefinition {
   trigger: string;
   subject: string;
   body_text: string;
+  /** Default HTML body, shown inside the branded layout (see email-layout.ts). */
+  body_html: string;
   /**
    * Required templates cannot be disabled (the feature stops working without
    * them), and their parameters are never stored for retries because they
@@ -74,9 +78,123 @@ export const PARAM_DESCRIPTION: Record<string, string> = {
 
 const SIGN_OFF = '\n\nThank you,\n{{ venue_name }}\nQuestions? Contact {{ contact_email }}';
 
+const WHEN: [string, string][] = [
+  ['Date', '{{ booking_date }}'],
+  ['Time', '{{ booking_start_time }}–{{ booking_end_time }}'],
+];
+const REF: [string, string] = ['Reference', '{{ booking_reference }}'];
+const TOTAL: [string, string] = ['Total', '{{ booking_cost }}'];
+const RESOURCE: [string, string] = ['Booking', '{{ resource_name }}'];
+const HI = para('Hi {{ customer_name }},');
+
+const HTML: Record<EmailTemplateKey, string> = {
+  booking_request_received: [
+    badge('Awaiting approval', 'navy'),
+    headline('We’ve got your request.'),
+    HI,
+    para('Thanks for getting in touch. We’ve received your request and it’s now waiting for approval. We’ll be in touch as soon as it’s been looked at.'),
+    details([['What you asked for', '{{ resource_name }}'], ...WHEN, REF]),
+    signOff(),
+  ].join('\n'),
+  booking_approved: [
+    badge('Approved', 'green'),
+    headline('You’re booked in!'),
+    HI,
+    para('Good news: your booking has been approved and is confirmed.'),
+    details([RESOURCE, ...WHEN, TOTAL, REF]),
+    signOff(),
+  ].join('\n'),
+  booking_rejected: [
+    badge('Not approved', 'red'),
+    headline('Sorry, we can’t fit you in.'),
+    HI,
+    para('Unfortunately your booking request could not be approved.'),
+    details([['What you asked for', '{{ resource_name }}'], ...WHEN, REF]),
+    signOff(),
+  ].join('\n'),
+  booking_confirmation: [
+    badge('Confirmed', 'green'),
+    headline('Your booking is confirmed.'),
+    HI,
+    para('You’re all set. Here are the details of your booking.'),
+    details([RESOURCE, ...WHEN, TOTAL, REF]),
+    signOff(),
+  ].join('\n'),
+  booking_amended: [
+    badge('Changed', 'blue'),
+    headline('Your booking has changed.'),
+    HI,
+    para('Your booking has been updated. Here are the new details.'),
+    details([RESOURCE, ...WHEN, TOTAL, REF]),
+    signOff(),
+  ].join('\n'),
+  booking_amendment_rejected: [
+    badge('Change not approved', 'orange'),
+    headline('Your booking is unchanged.'),
+    HI,
+    para('We couldn’t approve your requested change to booking {{ booking_reference }}. Your original booking still stands.'),
+    para('{{ decision_note }}'),
+    details([RESOURCE, ...WHEN, REF]),
+    signOff(),
+  ].join('\n'),
+  booking_cancelled: [
+    badge('Cancelled', 'red'),
+    headline('Your booking has been cancelled.'),
+    HI,
+    para('This booking has now been cancelled.'),
+    details([RESOURCE, ['Date', '{{ booking_date }}'], REF]),
+    signOff(),
+  ].join('\n'),
+  provisional_booking: [
+    badge('Provisional', 'yellow'),
+    headline('We’re holding it for you.'),
+    HI,
+    para('We’re holding this time for you as a provisional booking until <strong>{{ expiry_date }}</strong>. If it hasn’t been confirmed by then, it will expire and the time will be released.'),
+    details([RESOURCE, ...WHEN, ['Held until', '{{ expiry_date }}'], ['Total if confirmed', '{{ booking_cost }}'], REF]),
+    signOff(),
+  ].join('\n'),
+  provisional_expired: [
+    badge('Expired', 'navy'),
+    headline('Your hold has expired.'),
+    HI,
+    para('Your provisional booking wasn’t confirmed in time, so it has expired and the time has been released.'),
+    details([RESOURCE, ['Date', '{{ booking_date }}'], REF]),
+    para('You’re welcome to make a new booking if the time is still free.'),
+    signOff(),
+  ].join('\n'),
+  payment_reminder: [
+    badge('Payment due', 'orange'),
+    headline('A quick reminder about payment.'),
+    HI,
+    para('This is a friendly reminder that payment is due for your booking.'),
+    details([['Amount due', '{{ booking_cost }}'], RESOURCE, ['Date', '{{ booking_date }}'], REF]),
+    para('{{ payment_instructions }}'),
+    para('Please quote reference <strong>{{ booking_reference }}</strong> with your payment.'),
+    signOff(),
+  ].join('\n'),
+  organisation_invitation: [
+    badge('Invitation', 'blue'),
+    headline('You’re invited to join {{ organisation_name }}.'),
+    para('Hello,'),
+    para('{{ inviter_name }} has invited you to join <strong>{{ organisation_name }}</strong> on the {{ venue_name }} booking site as an {{ invitation_role }}.'),
+    button('Accept or decline', '{{ invitation_url }}'),
+    para('This invitation expires on {{ invitation_expiry }}. If you weren’t expecting it, you can ignore this email.', { muted: true }),
+    signOff(),
+  ].join('\n'),
+  password_reset: [
+    headline('Reset your password.'),
+    HI,
+    para('Use the button below to choose a new password. The link expires in 1 hour.'),
+    button('Reset password', '{{ reset_url }}'),
+    para('If you didn’t ask to reset your password, you can ignore this email.', { muted: true }),
+    signOff(),
+  ].join('\n'),
+};
+
 export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   {
     key: 'booking_request_received',
+    body_html: HTML.booking_request_received,
     name: 'Booking request received',
     trigger: 'A booking is submitted for a resource that needs approval',
     subject: 'We have received your booking request {{ booking_reference }}',
@@ -84,6 +202,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'booking_approved',
+    body_html: HTML.booking_approved,
     name: 'Booking approved',
     trigger: 'An administrator approves a booking request',
     subject: 'Your booking {{ booking_reference }} has been approved',
@@ -91,6 +210,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'booking_rejected',
+    body_html: HTML.booking_rejected,
     name: 'Booking rejected',
     trigger: 'An administrator rejects a booking request',
     subject: 'Your booking {{ booking_reference }} could not be approved',
@@ -98,6 +218,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'booking_confirmation',
+    body_html: HTML.booking_confirmation,
     name: 'Booking confirmation',
     trigger: 'A booking is confirmed without needing approval, or a provisional hold is confirmed',
     subject: 'Your {{ venue_name }} booking {{ booking_reference }} is confirmed',
@@ -105,6 +226,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'booking_amended',
+    body_html: HTML.booking_amended,
     name: 'Booking amendment',
     trigger: 'A change to a booking is approved or made by an administrator',
     subject: 'Your booking {{ booking_reference }} has been changed',
@@ -112,6 +234,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'booking_amendment_rejected',
+    body_html: HTML.booking_amendment_rejected,
     name: 'Booking change not approved',
     trigger: 'An administrator rejects a change request',
     subject: 'Your change request for booking {{ booking_reference }} was not approved',
@@ -120,6 +243,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'booking_cancelled',
+    body_html: HTML.booking_cancelled,
     name: 'Booking cancellation',
     trigger: 'A booking (or dates in a series) is cancelled',
     subject: 'Your booking {{ booking_reference }} has been cancelled',
@@ -127,6 +251,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'provisional_booking',
+    body_html: HTML.provisional_booking,
     name: 'Provisional booking',
     trigger: 'A provisional hold is placed',
     subject: 'Your provisional booking {{ booking_reference }} is held until {{ expiry_date }}',
@@ -135,6 +260,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'provisional_expired',
+    body_html: HTML.provisional_expired,
     name: 'Provisional expiry',
     trigger: 'A provisional hold expires without being confirmed',
     subject: 'Your provisional booking {{ booking_reference }} has expired',
@@ -142,6 +268,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'payment_reminder',
+    body_html: HTML.payment_reminder,
     name: 'Payment reminder',
     trigger: 'An administrator sends a reminder from the booking page',
     subject: 'Payment reminder for booking {{ booking_reference }}',
@@ -150,6 +277,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'organisation_invitation',
+    body_html: HTML.organisation_invitation,
     name: 'Organisation invitation',
     trigger: 'An Organisation Manager invites someone',
     subject: '{{ inviter_name }} has invited you to join {{ organisation_name }}',
@@ -159,6 +287,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
   },
   {
     key: 'password_reset',
+    body_html: HTML.password_reset,
     name: 'Password reset',
     trigger: 'A user asks to reset their password',
     subject: 'Reset your {{ venue_name }} password',
@@ -208,9 +337,15 @@ export interface RenderedEmail {
 /**
  * Fill a template. Parameter values are user-provided data (names, notes), so
  * they are HTML-escaped in the HTML output and stripped of line breaks in the
- * subject. With no HTML body, the HTML is the escaped text with line breaks.
+ * subject. The HTML body (or, with none, the escaped text with line breaks) is
+ * wrapped in the branded layout. `logo_url` comes from Settings, and
+ * `showLogoPlaceholder` marks the logo's place in previews while none is set.
  */
-export function renderEmail(content: { subject: string; body_text: string; body_html?: string | null }, params: Record<string, string>): RenderedEmail {
+export function renderEmail(
+  content: { subject: string; body_text: string; body_html?: string | null },
+  params: Record<string, string>,
+  opts: { showLogoPlaceholder?: boolean } = {},
+): RenderedEmail {
   const value = (key: string) => params[key] ?? '';
   const subject = content.subject.replace(PLACEHOLDER, (_, k: string) => value(k).replace(/[\r\n]+/g, ' ')).trim();
   const text = content.body_text.replace(PLACEHOLDER, (_, k: string) => value(k));
@@ -218,10 +353,24 @@ export function renderEmail(content: { subject: string; body_text: string; body_
     ? content.body_html.replace(PLACEHOLDER, (_, k: string) => escapeHtml(value(k)))
     : escapeHtml(text)
         .split(/\n{2,}/)
-        .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+        .map((p) => `<p style="margin:0 0 16px 0;">${p.replace(/\n/g, '<br>')}</p>`)
         .join('\n');
-  const html = `<!doctype html><html><body style="font-family:'Nunito Sans',Arial,sans-serif;color:#1b1b1b;line-height:1.5">${inner}</body></html>`;
+  const html = emailLayout(inner, {
+    title: escapeHtml(subject),
+    preheader: escapeHtml(preheader(text)),
+    logoUrl: escapeHtml(value('logo_url')),
+    contactEmail: escapeHtml(value('contact_email')),
+    venueName: escapeHtml(value('venue_name')),
+    showLogoPlaceholder: opts.showLogoPlaceholder,
+  });
   return { subject, text, html };
+}
+
+/** The inbox preview line: the first paragraph after the greeting. */
+function preheader(text: string): string {
+  const paragraphs = text.split(/\n{2,}/).map((p) => p.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const line = (/^(hi|hello|dear)\b/i.test(paragraphs[0] ?? '') ? paragraphs[1] : paragraphs[0]) ?? '';
+  return line.length > 140 ? `${line.slice(0, 139)}…` : line;
 }
 
 /** Example values for previews and test emails. */

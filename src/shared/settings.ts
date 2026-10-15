@@ -7,11 +7,13 @@ import { z } from 'zod';
 export interface SettingDefinition {
   key: string;
   label: string;
-  type: 'text' | 'email' | 'integer';
+  type: 'text' | 'email' | 'integer' | 'url';
   default: string;
   help?: string;
   min?: number;
   max?: number;
+  /** May be left blank. */
+  optional?: boolean;
 }
 
 export const SETTING_DEFINITIONS: SettingDefinition[] = [
@@ -27,6 +29,10 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
     help: 'Used in payment reminder emails as {{ payment_instructions }}.',
   },
   { key: 'contact_email', label: 'Contact email', type: 'email', default: 'bookings@strattonscouts.example', help: 'Shown to customers in emails as {{ contact_email }}.' },
+  {
+    key: 'email_logo_url', label: 'Email logo URL', type: 'url', default: '', optional: true,
+    help: 'Public https address of the logo shown at the top of every email (for example on R2). Leave blank for no logo.',
+  },
 ];
 
 export function settingDefault(key: string): string | undefined {
@@ -42,6 +48,7 @@ function valueSchema(d: SettingDefinition): z.ZodType<string, z.ZodTypeDef, unkn
       .transform(String);
   }
   if (d.type === 'email') return z.string().trim().email().max(200);
+  if (d.type === 'url') return z.string().trim().max(500).refine((v) => v === '' || /^https:\/\/\S+$/.test(v), 'Must start with https://');
   return z.string().trim().min(1).max(200);
 }
 

@@ -159,7 +159,7 @@ function TemplateEditor({ template, onClose, onSaved }: { template: Template; on
             <textarea id="tpl-text" className="input font-mono text-sm" rows={10} value={bodyText} onChange={(e) => setBodyText(e.target.value)} onFocus={track(setBodyText)} />
           </div>
           <div>
-            <label className="label" htmlFor="tpl-html">HTML body (optional; blank uses the plain text)</label>
+            <label className="label" htmlFor="tpl-html">HTML body (what most people see; blank sends the plain text in the branded layout)</label>
             <textarea id="tpl-html" className="input font-mono text-sm" rows={5} value={bodyHtml} onChange={(e) => setBodyHtml(e.target.value)} onFocus={track(setBodyHtml)} />
           </div>
           <div>
@@ -183,7 +183,7 @@ function TemplateEditor({ template, onClose, onSaved }: { template: Template; on
           {preview ? (
             <div className="rounded-xl border bg-white">
               <p className="border-b px-3 py-2 text-sm"><span className="text-gray-500">Subject:</span> <span className="font-bold">{preview.subject}</span></p>
-              <iframe title="HTML preview" sandbox="" srcDoc={preview.html} className="h-72 w-full" />
+              <iframe title="HTML preview" sandbox="" srcDoc={preview.html} className="h-[36rem] w-full" />
               {preview.unknown.length > 0 && (
                 <p className="border-t px-3 py-2 text-sm text-scout-red">Unknown parameters: {preview.unknown.map((u) => `{{ ${u} }}`).join(', ')}</p>
               )}

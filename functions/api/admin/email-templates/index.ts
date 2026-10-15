@@ -22,11 +22,12 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
         customised: !!row,
         subject: row?.subject ?? d.subject,
         body_text: row?.body_text ?? d.body_text,
-        body_html: row?.body_html ?? null,
+        body_html: row ? row.body_html : d.body_html,
         is_enabled: d.required ? true : row ? !!row.is_enabled : true,
         updated_at: row?.updated_at ?? null,
         default_subject: d.subject,
         default_body_text: d.body_text,
+        default_body_html: d.body_html,
         parameters: templateParams(d.key).map((p) => ({ name: p, description: PARAM_DESCRIPTION[p] ?? '' })),
       };
     }),

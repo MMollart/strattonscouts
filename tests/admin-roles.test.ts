@@ -114,5 +114,9 @@ describe('administrator management (FR08)', () => {
     expect((await call(settings.onRequestPut, { env, cookie, method: 'PUT', body: { values: { venue_name: '1st Stratton Scouts' } } })).status).toBe(200);
     const res = await call(settings.onRequestGet, { env, cookie });
     expect(res.body.find((s: { key: string }) => s.key === 'venue_name').value).toBe('1st Stratton Scouts');
+    // The email logo is optional but must be an https address.
+    expect((await call(settings.onRequestPut, { env, cookie, method: 'PUT', body: { values: { email_logo_url: 'http://x.example/logo.png' } } })).status).toBe(400);
+    expect((await call(settings.onRequestPut, { env, cookie, method: 'PUT', body: { values: { email_logo_url: '' } } })).status).toBe(200);
+    expect((await call(settings.onRequestPut, { env, cookie, method: 'PUT', body: { values: { email_logo_url: 'https://cdn.example/logo.png' } } })).status).toBe(200);
   });
 });
