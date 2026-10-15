@@ -1,6 +1,7 @@
 import type { Env } from '../_lib/http';
 import { error, json } from '../_lib/http';
 import { canonicalIso, loadBusyPeriods } from '../_lib/availability-sql';
+import { loadRestrictions } from '../_lib/restrictions';
 
 const MAX_RANGE_MS = 1000 * 60 * 60 * 24 * 62; // a little over two months
 
@@ -8,7 +9,9 @@ const MAX_RANGE_MS = 1000 * 60 * 60 * 24 * 62; // a little over two months
  * Public calendar feed: the periods in [from, to) when a resource cannot be
  * booked, either because of an active booking (on it or a conflicting
  * resource) or an administrative closure. Returns times and a kind only —
- * never who booked or any booking details.
+ * never who booked or any booking details. Also returns the resource's
+ * booking restrictions (FR03) so the calendar can grey out times the rules
+ * do not allow.
  *
  * Query params: resource_id, from (ISO), to (ISO)
  */
@@ -32,6 +35,6 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   if (!resource) return error('Resource not found', 404);
   if (!resource.is_active) return json({ active: false, busy: [] });
 
-  const busy = await loadBusyPeriods(env, resourceId, from, to);
-  return json({ active: true, busy });
+  const [busy, restrictions] = await Promise.all([loadBusyPeriods(env, resourceId, from, to), loadRestrictions(env, resourceId)]);
+  return json({ active: true, busy, restrictions });
 };

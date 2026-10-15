@@ -244,6 +244,13 @@ overridden. Booking details show the override history to administrators.
 - Rules are managed under Admin → Resources (*Recurring availability rules*,
   and *Booking limits* per resource) rather than on a new page.
 
+**On the availability calendar.** The public calendar feed returns each
+resource's rules, and the calendar evaluates them with the same shared code
+the server uses: times outside opening hours, inside a recurring restriction,
+or outside the notice and advance windows are shown light grey as *Not
+bookable* and cannot be selected (hovering gives the reason). Days with no
+bookable time are grey in month view. The server still checks every booking.
+
 ## FR04 – Provisional bookings & automatic expiry
 
 **Statuses.** `provisional` and `expired` join the Release 1 statuses.

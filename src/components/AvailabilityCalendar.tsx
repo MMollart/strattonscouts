@@ -10,15 +10,24 @@ import {
   toLondon,
   weekdayMondayFirst,
 } from '@shared/londonTime';
+import { evaluateRestrictions, type AvailabilityRule } from '@shared/availability-rules';
 
 type View = 'month' | 'week' | 'day';
-type SlotState = 'free' | 'booked' | 'closed' | 'past';
+type SlotState = 'free' | 'booked' | 'closed' | 'restricted' | 'past';
 
 interface BusyPeriod {
   starts_at: string;
   ends_at: string;
   kind: 'booked' | 'closed';
 }
+
+interface Restrictions {
+  minNoticeMinutes: number | null;
+  maxAdvanceDays: number | null;
+  rules: AvailabilityRule[];
+}
+
+const NO_RESTRICTIONS: Restrictions = { minNoticeMinutes: null, maxAdvanceDays: null, rules: [] };
 
 interface Selection {
   start: string;
@@ -38,10 +47,17 @@ function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string): b
   return aStart < bEnd && bStart < aEnd;
 }
 
-function slotState(start: string, end: string, busy: BusyPeriod[], nowIso: string): SlotState {
+/** Why a window breaks the booking rules (opening hours, recurring restrictions, notice), or null. */
+function ruleBlock(start: string, end: string, restrictions: Restrictions): string | null {
+  const violations = evaluateRestrictions({ startsAt: start, endsAt: end, now: Date.now(), ...restrictions });
+  return violations[0]?.message ?? null;
+}
+
+function slotState(start: string, end: string, busy: BusyPeriod[], nowIso: string, restrictions: Restrictions): SlotState {
   if (end <= nowIso) return 'past';
   if (busy.some((b) => b.kind === 'closed' && overlaps(start, end, b.starts_at, b.ends_at))) return 'closed';
   if (busy.some((b) => overlaps(start, end, b.starts_at, b.ends_at))) return 'booked';
+  if (ruleBlock(start, end, restrictions)) return 'restricted';
   return 'free';
 }
 
@@ -71,6 +87,7 @@ const SLOT_STYLE: Record<SlotState, string> = {
   free: 'bg-white hover:bg-scout-teal/15 text-gray-700',
   booked: 'bg-scout-purple/80 text-white cursor-not-allowed',
   closed: 'bg-gray-400 text-white cursor-not-allowed bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(255,255,255,0.25)_4px,rgba(255,255,255,0.25)_8px)]',
+  restricted: 'bg-gray-200 text-gray-500 cursor-not-allowed',
   past: 'bg-gray-100 text-gray-400 cursor-not-allowed',
 };
 
@@ -78,6 +95,7 @@ const STATE_LABEL: Record<SlotState, string> = {
   free: 'available',
   booked: 'unavailable, already booked',
   closed: 'unavailable, closed',
+  restricted: 'not bookable',
   past: 'in the past',
 };
 
@@ -95,6 +113,7 @@ export default function AvailabilityCalendar({
   );
   const [anchor, setAnchor] = useState(londonToday());
   const [busy, setBusy] = useState<BusyPeriod[]>([]);
+  const [restrictions, setRestrictions] = useState<Restrictions>(NO_RESTRICTIONS);
   const [active, setActive] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,12 +130,13 @@ export default function AvailabilityCalendar({
     const from = fromLondon(first, '00:00');
     const to = fromLondon(addDays(first, days), '00:00');
     api
-      .get<{ active: boolean; busy: BusyPeriod[] }>(
+      .get<{ active: boolean; busy: BusyPeriod[]; restrictions?: Restrictions }>(
         `/calendar?resource_id=${encodeURIComponent(resourceId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
       )
       .then((res) => {
         if (!current) return;
         setBusy(res.busy);
+        setRestrictions(res.restrictions ?? NO_RESTRICTIONS);
         setActive(res.active);
       })
       .catch((e) => current && setError(e instanceof ApiError ? e.message : 'Could not load availability'))
@@ -129,7 +149,7 @@ export default function AvailabilityCalendar({
   useEffect(() => setSelection(null), [resourceId]);
 
   function choose(start: string, end: string) {
-    if (selection && start >= selection.start && slotState(selection.start, end, busy, nowIso) === 'free') {
+    if (selection && start >= selection.start && slotState(selection.start, end, busy, nowIso, restrictions) === 'free') {
       setSelection({ start: selection.start, end }); // extend the current selection
     } else {
       setSelection({ start, end });
@@ -143,9 +163,10 @@ export default function AvailabilityCalendar({
   function hourSlot(date: string, hour: number) {
     const start = fromLondon(date, hh(hour));
     const end = fromLondon(hour + 1 === 24 ? addDays(date, 1) : date, hour + 1 === 24 ? '00:00' : hh(hour + 1));
-    const state = slotState(start, end, busy, nowIso);
+    const state = slotState(start, end, busy, nowIso, restrictions);
     const selected = isSelected(start, end);
-    const label = `${formatLondon(start, { weekday: 'long', day: 'numeric', month: 'long' })}, ${hh(hour)} to ${hh(hour + 1)}, ${STATE_LABEL[state]}`;
+    const reason = state === 'restricted' ? ruleBlock(start, end, restrictions) : null;
+    const label = `${formatLondon(start, { weekday: 'long', day: 'numeric', month: 'long' })}, ${hh(hour)} to ${hh(hour + 1)}, ${STATE_LABEL[state]}${reason ? `: ${reason}` : ''}`;
     return (
       <button
         key={`${date}-${hour}`}
@@ -172,11 +193,11 @@ export default function AvailabilityCalendar({
     if (relevant.some((b) => b.kind === 'closed' && b.starts_at <= start && b.ends_at >= end)) {
       return { state: 'closed', label: 'closed' };
     }
-    if (relevant.length === 0) return { state: 'free', label: 'available' };
-    const freeHour = HOURS.some(
-      (h) => slotState(fromLondon(date, hh(h)), fromLondon(date, hh(h + 1)), busy, nowIso) === 'free',
-    );
-    return freeHour ? { state: 'partial', label: 'partly booked' } : { state: 'booked', label: 'fully booked' };
+    const states = HOURS.map((h) => slotState(fromLondon(date, hh(h)), fromLondon(date, hh(h + 1)), busy, nowIso, restrictions));
+    if (!states.includes('free')) {
+      return states.includes('booked') ? { state: 'booked', label: 'fully booked' } : { state: 'restricted', label: 'not bookable' };
+    }
+    return relevant.length || states.includes('booked') ? { state: 'partial', label: 'partly booked' } : { state: 'free', label: 'available' };
   }
 
   const title = heading(view, anchor, first);
@@ -226,7 +247,7 @@ export default function AvailabilityCalendar({
                 const { state, label } = dayState(date);
                 const outside = date.slice(0, 7) !== thisMonth;
                 const tone =
-                  state === 'free' ? 'bg-scout-green' : state === 'partial' ? 'bg-scout-yellow' : state === 'booked' ? 'bg-scout-purple' : state === 'closed' ? 'bg-gray-400' : 'bg-transparent';
+                  state === 'free' ? 'bg-scout-green' : state === 'partial' ? 'bg-scout-yellow' : state === 'booked' ? 'bg-scout-purple' : state === 'closed' ? 'bg-gray-400' : state === 'restricted' ? 'bg-gray-200' : 'bg-transparent';
                 return (
                   <button
                     key={date}
@@ -279,6 +300,7 @@ export default function AvailabilityCalendar({
             <Legend tone="bg-scout-yellow" label="Partly booked" />
             <Legend tone="bg-scout-purple" label="Fully booked" />
             <Legend tone="bg-gray-400" label="Closed" />
+            <Legend tone="bg-gray-200" label="Not bookable" />
             <span>Select a day to choose times.</span>
           </>
         ) : (
@@ -286,6 +308,7 @@ export default function AvailabilityCalendar({
             <Legend tone="bg-white border border-gray-300" label="Available" />
             <Legend tone="bg-scout-purple/80" label="Booked" />
             <Legend tone="bg-gray-400" label="Closed" />
+            <Legend tone="bg-gray-200" label="Not bookable (opening hours or booking rules)" />
             <Legend tone="bg-scout-teal" label="Your selection" />
             <span>Times are UK time, {hh(FIRST_HOUR)}–{hh(LAST_HOUR)}. Select a start, then an end.</span>
           </>

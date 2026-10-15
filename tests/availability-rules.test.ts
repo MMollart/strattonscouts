@@ -11,6 +11,7 @@ import * as restrictionsApi from '../functions/api/admin/resources/[id]/restrict
 import * as bookingsApi from '../functions/api/bookings/index';
 import * as bookingApi from '../functions/api/bookings/[id]';
 import * as availabilityApi from '../functions/api/availability';
+import * as calendarApi from '../functions/api/calendar';
 
 const rule = (r: Partial<AvailabilityRule>): AvailabilityRule => ({
   id: 'r1', resource_id: 'res_main', rule_type: 'closed', days_of_week: '1', start_time: '18:00', end_time: '21:00',
@@ -122,6 +123,17 @@ describe('availability rules against D1 (FR03)', () => {
     expect((await createBookingAtomic({ env, userId: 'u1', resourceId: 'res_small', startsAt: w.starts_at, endsAt: w.ends_at, actorId: 'u1' })).ok).toBe(true);
     const avail = await call(availabilityApi.onRequestGet, { env, path: `/api/availability?resource_id=res_main&starts_at=${w.starts_at}&ends_at=${w.ends_at}` });
     expect(avail.body).toMatchObject({ available: false, reason: 'restricted' });
+  });
+
+  it('publishes the rules with the calendar so it can grey out restricted times', async () => {
+    await call(rulesApi.onRequestPost, { env, cookie: admin, body: { resource_id: 'res_main', rule_type: 'closed', days_of_week: [1], start_time: '18:00', end_time: '21:00', label: 'Cubs' } });
+    const w = nextWeek();
+    const cal = await call(calendarApi.onRequestGet, { env, path: `/api/calendar?resource_id=res_main&from=${w.starts_at}&to=${w.ends_at}` });
+    expect(cal.body.restrictions.rules).toHaveLength(1);
+    expect(cal.body.restrictions.rules[0]).toMatchObject({ rule_type: 'closed', days_of_week: '1', start_time: '18:00', end_time: '21:00' });
+    // The browser evaluates the same rules the server enforces.
+    const tuesdayEvening = { startsAt: fromLondon('2027-06-08', '19:00'), endsAt: fromLondon('2027-06-08', '20:00') };
+    expect(evalWith(tuesdayEvening, cal.body.restrictions.rules).map((v) => v.kind)).toEqual(['recurring_restriction']);
   });
 
   it('leaves existing bookings intact when rules change', async () => {
