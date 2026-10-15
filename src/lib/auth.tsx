@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api } from './api';
+import type { Permission } from '@shared/permissions';
 
 export interface SessionUser {
   id: string;
@@ -8,6 +9,7 @@ export interface SessionUser {
   phone: string | null;
   pricing_category_id: string;
   roles: string[];
+  permissions: Permission[];
 }
 
 interface AuthContextValue {
@@ -15,6 +17,8 @@ interface AuthContextValue {
   loading: boolean;
   isAdmin: boolean;
   isSuperAdmin: boolean;
+  /** Whether the signed-in user holds a platform permission (UI hint only; the API enforces it). */
+  can: (permission: Permission) => boolean;
   refresh: () => Promise<void>;
   setUser: (u: SessionUser | null) => void;
   logout: () => Promise<void>;
@@ -47,11 +51,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const roles = user?.roles ?? [];
+  const permissions = user?.permissions ?? [];
   const value: AuthContextValue = {
     user,
     loading,
-    isAdmin: roles.includes('admin') || roles.includes('super_admin'),
+    isAdmin: roles.length > 0,
     isSuperAdmin: roles.includes('super_admin'),
+    can: (permission) => permissions.includes(permission),
     refresh,
     setUser,
     logout,

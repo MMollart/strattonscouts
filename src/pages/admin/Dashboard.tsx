@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../../lib/useApi';
 import { Spinner, ErrorState, StatusBadge } from '../../components/ui';
 import { formatLondon } from '@shared/londonTime';
+import { useAuth } from '../../lib/auth';
 
 interface Dashboard {
   upcoming_bookings: number;
@@ -19,6 +20,7 @@ interface Dashboard {
 
 export default function AdminDashboard() {
   const { data, loading, error } = useApi<Dashboard>('/admin/dashboard');
+  const { can } = useAuth();
 
   if (loading) return <Spinner />;
   if (error) return <ErrorState message={error} />;
@@ -33,6 +35,8 @@ export default function AdminDashboard() {
           <Link to="/admin/resources" className="btn-secondary">Resources</Link>
           <Link to="/admin/pricing" className="btn-secondary">Pricing &amp; conflicts</Link>
           <Link to="/admin/users" className="btn-secondary">Users</Link>
+          {can('admins.manage') && <Link to="/admin/admins" className="btn-secondary">Administrators</Link>}
+          {can('settings.manage') && <Link to="/admin/settings" className="btn-secondary">Settings</Link>}
         </nav>
       </div>
 

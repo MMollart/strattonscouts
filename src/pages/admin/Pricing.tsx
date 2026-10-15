@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
+import { useAuth } from '../../lib/auth';
 import { Spinner, ErrorState } from '../../components/ui';
 import { formatGBP } from '@shared/pricing';
 
@@ -42,6 +43,7 @@ export default function AdminPricing() {
 }
 
 function PricingEditor({ resourceId }: { resourceId: string }) {
+  const { can } = useAuth();
   const { data, loading, error } = useApi<PriceRow[]>(`/admin/resources/${resourceId}/pricing`, [resourceId]);
   const [rows, setRows] = useState<PriceRow[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
@@ -100,7 +102,7 @@ function PricingEditor({ resourceId }: { resourceId: string }) {
               />
               Free
             </label>
-            <button className="btn-secondary" disabled={saving === row.category_id} onClick={() => save(row)}>Save</button>
+            {can('pricing.manage') && <button className="btn-secondary" disabled={saving === row.category_id} onClick={() => save(row)}>Save</button>}
           </div>
         ))}
       </div>
@@ -110,6 +112,7 @@ function PricingEditor({ resourceId }: { resourceId: string }) {
 }
 
 function ConflictMatrix({ resources }: { resources: ResourceRow[] }) {
+  const { can } = useAuth();
   const { data, loading, error } = useApi<ConflictRow[]>('/admin/conflicts');
   const [edges, setEdges] = useState<ConflictRow[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
@@ -182,7 +185,7 @@ function ConflictMatrix({ resources }: { resources: ResourceRow[] }) {
                       type="checkbox"
                       aria-label={`${row.name} conflicts with ${col.name}`}
                       checked={!!rel}
-                      disabled={self || working || rel?.is_mandatory}
+                      disabled={self || working || rel?.is_mandatory || !can('resources.manage')}
                       onChange={() => toggle(row.id, col.id, rel)}
                     />
                   </td>

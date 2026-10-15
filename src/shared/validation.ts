@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ADMIN_ROLES } from './permissions';
 
 export const categoryNameSchema = z.enum(['scouts', 'community', 'public']);
 export const pricingModelSchema = z.enum(['hourly', 'nightly', 'fixed']);
@@ -89,7 +90,9 @@ export const closureSchema = z
   });
 
 export const adminUserUpdateSchema = z.object({
-  pricing_category_id: z.string().min(1).optional(),
-  grant_role: z.enum(['admin', 'super_admin']).optional(),
-  revoke_role: z.enum(['admin', 'super_admin']).optional(),
+  pricing_category_id: z.string().min(1),
+});
+
+export const adminRoleUpdateSchema = z.object({
+  role: z.enum(ADMIN_ROLES).nullable(),
 });

@@ -1,13 +1,13 @@
 import type { Env } from '../../_lib/http';
 import { error, json, newId, now } from '../../_lib/http';
-import { getAuthUser, isAdmin } from '../../_lib/auth';
+import { requirePermission } from '../../_lib/auth';
 import { canonicalIso } from '../../_lib/availability-sql';
 import { closureSchema } from '@shared/validation';
 
 // Admin: list closures (optionally filtered by resource).
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'bookings.view');
+  if (user instanceof Response) return user;
   const resourceId = new URL(request.url).searchParams.get('resource_id');
   const rows = resourceId
     ? await env.DB.prepare('SELECT id, resource_id, starts_at, ends_at, reason FROM resource_closures WHERE resource_id = ? ORDER BY starts_at').bind(resourceId).all()
@@ -17,8 +17,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 
 // Admin: create a closure / unavailable period.
 export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'availability.manage');
+  if (user instanceof Response) return user;
 
   let body: unknown;
   try {
@@ -47,8 +47,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
 
 // Admin: delete a closure. Body: { id }
 export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'availability.manage');
+  if (user instanceof Response) return user;
   let body: { id?: string };
   try {
     body = (await request.json()) as { id?: string };

@@ -1,11 +1,11 @@
 import type { Env } from '../../_lib/http';
-import { error, json } from '../../_lib/http';
-import { getAuthUser, isAdmin } from '../../_lib/auth';
+import { json } from '../../_lib/http';
+import { requirePermission } from '../../_lib/auth';
 
 // Admin dashboard summary metrics.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'bookings.view');
+  if (user instanceof Response) return user;
 
   const nowIso = new Date().toISOString();
   const upcoming = await env.DB.prepare(

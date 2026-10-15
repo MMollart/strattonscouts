@@ -1,9 +1,11 @@
 import { Miniflare } from 'miniflare';
 import type { Env } from '../../functions/_lib/http';
-import initSql from '../../migrations/0001_init.sql?raw';
-import seedSql from '../../migrations/0002_seed.sql?raw';
 
-const MIGRATIONS = [initSql, seedSql];
+// Every migration, applied in filename order exactly as wrangler applies them.
+const MIGRATION_FILES = import.meta.glob('../../migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+const MIGRATIONS = Object.keys(MIGRATION_FILES)
+  .sort()
+  .map((k) => MIGRATION_FILES[k]);
 
 /** Split a migration file into statements (no triggers or semicolons in strings). */
 function statements(sql: string): string[] {
@@ -43,5 +45,14 @@ export async function addUser(db: D1Database, id: string, category = 'cat_scouts
       'INSERT INTO users (id, email, full_name, phone_encrypted, password_hash, pricing_category_id, created_at, updated_at) VALUES (?, ?, ?, NULL, ?, ?, ?, ?)',
     )
     .bind(id, `${id}@example.com`, `User ${id}`, 'x', category, ts, ts)
+    .run();
+}
+
+/** Give a user an administration role ('super_admin' | 'booking_admin' | 'viewer'). */
+export async function addAdmin(db: D1Database, id: string, role: string): Promise<void> {
+  await addUser(db, id);
+  await db
+    .prepare('INSERT INTO user_roles (user_id, role_id, granted_at, granted_by) SELECT ?, id, ?, NULL FROM roles WHERE name = ?')
+    .bind(id, new Date().toISOString(), role)
     .run();
 }

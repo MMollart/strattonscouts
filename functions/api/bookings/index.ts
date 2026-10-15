@@ -1,6 +1,6 @@
 import type { Env } from '../../_lib/http';
 import { error, json } from '../../_lib/http';
-import { getAuthUser, isAdmin } from '../../_lib/auth';
+import { can, getAuthUser } from '../../_lib/auth';
 import { createBookingSchema } from '@shared/validation';
 import { createBookingAtomic } from '../../_lib/booking';
 import { bookingTimeParams, sendEmail } from '../../_lib/email';
@@ -38,7 +38,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   // Determine the customer the booking is for.
   let customerId = user.id;
   if (parsed.data.on_behalf_of_user_id) {
-    if (!isAdmin(user)) return error('Not authorised', 403);
+    if (!can(user, 'bookings.create')) return error('Not authorised', 403);
     customerId = parsed.data.on_behalf_of_user_id;
   }
 

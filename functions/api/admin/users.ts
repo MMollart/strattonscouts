@@ -1,11 +1,11 @@
 import type { Env } from '../../_lib/http';
-import { error, json } from '../../_lib/http';
-import { getAuthUser, isAdmin } from '../../_lib/auth';
+import { json } from '../../_lib/http';
+import { requirePermission } from '../../_lib/auth';
 
 // Admin: list registered customers with their category and roles.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'bookings.view');
+  if (user instanceof Response) return user;
 
   const rows = await env.DB.prepare(
     `SELECT u.id, u.email, u.full_name, u.pricing_category_id, pc.label AS category_label, u.created_at

@@ -1,4 +1,5 @@
 // Shared domain types used by both frontend and backend (Pages Functions).
+import type { AdminRole, Permission } from './permissions';
 
 export type PricingModel = 'hourly' | 'nightly' | 'fixed';
 export type ResourceType = 'individual' | 'combined';
@@ -10,7 +11,7 @@ export type BookingStatus =
   | 'rejected'
   | 'cancelled';
 
-export type RoleName = 'super_admin' | 'admin';
+export type { AdminRole as RoleName } from './permissions';
 
 export type CategoryName = 'scouts' | 'community' | 'public';
 
@@ -27,7 +28,8 @@ export interface PublicUser {
   full_name: string;
   phone: string | null;
   pricing_category_id: string;
-  roles: RoleName[];
+  roles: AdminRole[];
+  permissions: Permission[];
 }
 
 export interface Resource {

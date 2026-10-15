@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
+import { useAuth } from '../../lib/auth';
 import { Spinner, ErrorState, EmptyState } from '../../components/ui';
 import { BookingWindowFields, type BookingWindow, windowToIso } from '../../components/BookingWindowFields';
 import { formatLondon, londonToday } from '@shared/londonTime';
@@ -25,6 +26,7 @@ const EMPTY: Draft = {
 };
 
 export default function AdminResources() {
+  const { can } = useAuth();
   const { data, loading, error } = useApi<ResourceRow[]>('/admin/resources');
   const [rows, setRows] = useState<ResourceRow[]>([]);
   const [editing, setEditing] = useState<Draft | null>(null);
@@ -45,7 +47,7 @@ export default function AdminResources() {
         <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
       </div>
 
-      <button className="btn-primary mt-4" onClick={() => setEditing({ ...EMPTY })}>Add resource</button>
+      {can('resources.manage') && <button className="btn-primary mt-4" onClick={() => setEditing({ ...EMPTY })}>Add resource</button>}
 
       <div className="mt-6 space-y-2">
         {rows.length === 0 && <EmptyState title="No resources yet" />}
@@ -57,7 +59,7 @@ export default function AdminResources() {
                 /{r.slug} · {r.resource_type} · {r.pricing_model}{r.requires_approval ? ' · requires approval' : ''}
               </p>
             </div>
-            <button className="btn-secondary" onClick={() => setEditing(r)}>Edit</button>
+            {can('resources.manage') && <button className="btn-secondary" onClick={() => setEditing(r)}>Edit</button>}
           </div>
         ))}
       </div>
@@ -203,6 +205,7 @@ interface ClosureRow {
 }
 
 function ClosuresPanel({ resources }: { resources: ResourceRow[] }) {
+  const { can } = useAuth();
   const [closures, setClosures] = useState<ClosureRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resourceId, setResourceId] = useState('');
@@ -264,6 +267,7 @@ function ClosuresPanel({ resources }: { resources: ResourceRow[] }) {
     }
   }
 
+  const canManage = can('availability.manage');
   const nameOf = (id: string) => resources.find((r) => r.id === id)?.name ?? 'Unknown resource';
   const upcoming = closures?.filter((c) => c.ends_at > new Date().toISOString()) ?? [];
 
@@ -275,7 +279,7 @@ function ClosuresPanel({ resources }: { resources: ResourceRow[] }) {
         space also makes the Whole Venue unavailable. Existing bookings are not changed.
       </p>
 
-      <form className="card mt-4 space-y-4" onSubmit={add}>
+      {canManage && <form className="card mt-4 space-y-4" onSubmit={add}>
         <div>
           <label className="label" htmlFor="cl-resource">Resource</label>
           <select id="cl-resource" className="input" value={resourceId} onChange={(e) => setResourceId(e.target.value)}>
@@ -289,7 +293,7 @@ function ClosuresPanel({ resources }: { resources: ResourceRow[] }) {
         </div>
         {error && <ErrorState message={error} />}
         <button className="btn-primary" disabled={saving || !resourceId}>{saving ? 'Adding…' : 'Add closure'}</button>
-      </form>
+      </form>}
 
       <div className="mt-4 space-y-2">
         {closures === null && !error && <Spinner />}
@@ -301,7 +305,7 @@ function ClosuresPanel({ resources }: { resources: ResourceRow[] }) {
               <p className="text-sm text-gray-600">{formatLondon(c.starts_at)} to {formatLondon(c.ends_at)}</p>
               {c.reason && <p className="text-xs text-gray-500">{c.reason}</p>}
             </div>
-            <button type="button" className="btn-secondary" onClick={() => remove(c.id)}>Remove</button>
+            {canManage && <button type="button" className="btn-secondary" onClick={() => remove(c.id)}>Remove</button>}
           </div>
         ))}
       </div>

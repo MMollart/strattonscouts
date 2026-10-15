@@ -1,6 +1,6 @@
 import type { Env } from '../../_lib/http';
 import { error, json } from '../../_lib/http';
-import { getAuthUser, isAdmin } from '../../_lib/auth';
+import { can, getAuthUser } from '../../_lib/auth';
 
 // View a single booking. Customers may only view their own; admins any.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request, params }) => {
@@ -17,12 +17,12 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request, params })
     .first<Record<string, unknown>>();
   if (!booking) return error('Booking not found', 404);
 
-  if (booking.user_id !== user.id && !isAdmin(user)) {
+  if (booking.user_id !== user.id && !can(user, 'bookings.view')) {
     return error('Not authorised', 403);
   }
 
   // Non-admins must not see other customers' contact info (they only see own).
-  if (!isAdmin(user)) {
+  if (!can(user, 'bookings.view')) {
     delete booking.customer_email;
   }
 

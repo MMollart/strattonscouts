@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
+import { useAuth } from '../../lib/auth';
 import { Spinner, EmptyState, ErrorState, StatusBadge } from '../../components/ui';
 import { formatGBP } from '@shared/pricing';
 import { formatLondon, londonToday } from '@shared/londonTime';
@@ -32,6 +33,7 @@ interface CustomerRow { id: string; full_name: string; email: string; category_l
 const STATUSES = ['pending_approval', 'confirmed', 'rejected', 'cancelled'];
 
 export default function AdminBookings() {
+  const { can } = useAuth();
   const { data: resources } = useApi<ResourceRow[]>('/admin/resources');
   const [status, setStatus] = useState('');
   const [resourceId, setResourceId] = useState('');
@@ -95,7 +97,7 @@ export default function AdminBookings() {
         <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
       </div>
 
-      {creating ? (
+      {!can('bookings.create') ? null : creating ? (
         <BookForCustomer
           resources={(resources ?? []).filter((r) => r.is_active)}
           onClose={() => setCreating(false)}
@@ -148,13 +150,13 @@ export default function AdminBookings() {
                   <StatusBadge status={b.status} />
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {b.status === 'pending_approval' && (
+                  {b.status === 'pending_approval' && can('bookings.approve') && (
                     <>
                       <button className="btn-teal" disabled={working === b.id} onClick={() => decide(b.id, 'approve')}>Approve</button>
                       <button className="btn-danger" disabled={working === b.id} onClick={() => decide(b.id, 'reject')}>Reject</button>
                     </>
                   )}
-                  {(b.status === 'confirmed' || b.status === 'pending_approval') && (
+                  {(b.status === 'confirmed' || b.status === 'pending_approval') && can('bookings.manage') && (
                     <button className="btn-secondary" disabled={working === b.id} onClick={() => cancel(b.id)}>Cancel</button>
                   )}
                 </div>

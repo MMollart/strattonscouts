@@ -29,7 +29,7 @@ function fmt(iso: string): string {
 export default function BookingDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { can } = useAuth();
   const { data, loading, error, setData } = useApi<BookingDetail>(`/bookings/${id}`, [id]);
   const [working, setWorking] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -53,7 +53,7 @@ export default function BookingDetails() {
   if (!data) return null;
 
   const isUpcoming = new Date(data.starts_at).getTime() > Date.now();
-  const canCancel = (data.status === 'confirmed' || data.status === 'pending_approval') && (isAdmin || isUpcoming);
+  const canCancel = (data.status === 'confirmed' || data.status === 'pending_approval') && (can('bookings.manage') || isUpcoming);
 
   return (
     <div className="mx-auto max-w-2xl">

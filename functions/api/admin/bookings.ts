@@ -1,13 +1,13 @@
 import type { Env } from '../../_lib/http';
-import { error, json } from '../../_lib/http';
-import { getAuthUser, isAdmin } from '../../_lib/auth';
+import { json } from '../../_lib/http';
+import { requirePermission } from '../../_lib/auth';
 import { decryptAtRest } from '../../_lib/crypto';
 import { canonicalIso } from '../../_lib/availability-sql';
 
 // Admin: list/search/filter bookings including customer contact information.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'bookings.view');
+  if (user instanceof Response) return user;
 
   const url = new URL(request.url);
   const status = url.searchParams.get('status');

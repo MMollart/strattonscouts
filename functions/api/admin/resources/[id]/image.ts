@@ -1,14 +1,14 @@
 import type { Env } from '../../../../_lib/http';
 import { error, json, newId, now } from '../../../../_lib/http';
-import { getAuthUser, isAdmin } from '../../../../_lib/auth';
+import { requirePermission } from '../../../../_lib/auth';
 
 const MAX_SIZE = 5 * 1024 * 1024; // 5 MB
 const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
 
 // Admin: upload a primary image for a resource to R2. multipart/form-data: file
 export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'resources.manage');
+  if (user instanceof Response) return user;
   const resourceId = String(params.id);
 
   const resource = await env.DB.prepare('SELECT id FROM resources WHERE id = ?').bind(resourceId).first();

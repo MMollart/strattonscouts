@@ -1,12 +1,12 @@
 import type { Env } from '../../../../_lib/http';
 import { error, json, newId, now } from '../../../../_lib/http';
-import { getAuthUser, isAdmin } from '../../../../_lib/auth';
+import { requirePermission } from '../../../../_lib/auth';
 import { pricingUpsertSchema } from '@shared/validation';
 
 // Admin: list pricing for a resource.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request, params }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'bookings.view');
+  if (user instanceof Response) return user;
   const resourceId = String(params.id);
   const rows = await env.DB.prepare(
     `SELECT rp.id, pc.id AS category_id, pc.name AS category, pc.label,
@@ -24,8 +24,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request, params })
 
 // Admin: upsert pricing for a resource + category. Only affects future bookings.
 export const onRequestPut: PagesFunction<Env> = async ({ env, request, params }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'pricing.manage');
+  if (user instanceof Response) return user;
   const resourceId = String(params.id);
 
   let body: unknown;

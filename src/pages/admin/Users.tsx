@@ -17,7 +17,7 @@ interface UserRow {
 interface Category { id: string; name: string; label: string; }
 
 export default function AdminUsers() {
-  const { isSuperAdmin } = useAuth();
+  const { can } = useAuth();
   const { data, loading, error } = useApi<UserRow[]>('/admin/users');
   const { data: categories } = useApi<Category[]>('/categories');
   const [rows, setRows] = useState<UserRow[]>([]);
@@ -50,7 +50,10 @@ export default function AdminUsers() {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-3xl">Users</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
+        <div className="flex gap-3 text-sm font-bold text-scout-purple">
+          {can('admins.manage') && <Link to="/admin/admins">Administrators</Link>}
+          <Link to="/admin">← Dashboard</Link>
+        </div>
       </div>
 
       {actionError && <div className="mt-4"><ErrorState message={actionError} /></div>}
@@ -58,7 +61,6 @@ export default function AdminUsers() {
       <div className="mt-6 space-y-2">
         {rows.length === 0 && <EmptyState title="No registered users yet" />}
         {rows.map((u) => {
-          const isAdminUser = u.roles.includes('admin') || u.roles.includes('super_admin');
           return (
             <div key={u.id} className="card flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -76,31 +78,11 @@ export default function AdminUsers() {
                   id={`cat-${u.id}`}
                   className="input w-auto"
                   value={u.pricing_category_id}
-                  disabled={working === u.id}
+                  disabled={working === u.id || !can('bookings.manage')}
                   onChange={(e) => run(u.id, { pricing_category_id: e.target.value })}
                 >
                   {categories?.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                 </select>
-                {isSuperAdmin && (
-                  u.roles.includes('super_admin') ? (
-                    <button className="btn-secondary" disabled={working === u.id} onClick={() => run(u.id, { revoke_role: 'super_admin' })}>
-                      Remove Super Admin
-                    </button>
-                  ) : isAdminUser ? (
-                    <>
-                      <button className="btn-secondary" disabled={working === u.id} onClick={() => run(u.id, { revoke_role: 'admin' })}>
-                        Revoke admin
-                      </button>
-                      <button className="btn-secondary" disabled={working === u.id} onClick={() => run(u.id, { grant_role: 'super_admin' })}>
-                        Make Super Admin
-                      </button>
-                    </>
-                  ) : (
-                    <button className="btn-secondary" disabled={working === u.id} onClick={() => run(u.id, { grant_role: 'admin' })}>
-                      Make admin
-                    </button>
-                  )
-                )}
               </div>
             </div>
           );

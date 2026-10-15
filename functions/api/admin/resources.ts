@@ -1,13 +1,13 @@
 import type { Env } from '../../_lib/http';
 import { error, json, newId, now } from '../../_lib/http';
-import { getAuthUser, isAdmin } from '../../_lib/auth';
+import { requirePermission } from '../../_lib/auth';
 import { resourceUpsertSchema } from '@shared/validation';
 import { syncMandatoryConflicts } from '../../_lib/conflicts';
 
 // Admin: list all resources (including inactive).
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'bookings.view');
+  if (user instanceof Response) return user;
   const rows = await env.DB.prepare(
     `SELECT id, name, slug, description, resource_type, is_active, requires_approval, pricing_model, created_at, updated_at
      FROM resources ORDER BY name`,
@@ -23,8 +23,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 
 // Admin: create a resource.
 export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'resources.manage');
+  if (user instanceof Response) return user;
 
   let body: unknown;
   try {
