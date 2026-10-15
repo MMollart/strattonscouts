@@ -1,0 +1,45 @@
+{
+  "name": "strattonscouts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stratton Scouts resource booking platform (Release 1 MVP)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "pages:dev": "wrangler pages dev ./dist --d1 DB --r2 BUCKET",
+    "db:migrate:local": "wrangler d1 migrations apply strattonscouts-dev --local",
+    "db:migrate:remote": "wrangler d1 migrations apply strattonscouts-prod --remote --env production",
+    "db:seed:local": "wrangler d1 execute strattonscouts-dev --local --file=./migrations/0002_seed.sql"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240909.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@typescript-eslint/eslint-plugin": "^8.6.0",
+    "@typescript-eslint/parser": "^8.6.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-react-refresh": "^0.4.11",
+    "miniflare": "^3.20250718.3",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.11",
+    "typescript": "^5.6.2",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.6",
+    "wrangler": "^3.78.0"
+  }
+}
