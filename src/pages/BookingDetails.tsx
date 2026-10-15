@@ -31,6 +31,7 @@ interface BookingDetail {
   discount_pence: number;
   discount_label: string | null;
   overrides?: { id: string; rule: string; detail: string; reason: string; created_at: string; admin_name: string | null }[];
+  group?: { id: string; reference: string; resource_name: string; status: string; total_amount_pence: number }[];
 }
 
 function fmt(iso: string): string {
@@ -101,6 +102,24 @@ export default function BookingDetails() {
           <div className="flex items-center justify-between border-b border-gray-100 pb-2">
             <span className="text-gray-500">Recurring booking</span>
             <Link to={`/series/${data.series_id}`} className="font-bold text-scout-purple">View all dates</Link>
+          </div>
+        )}
+        {data.group && data.group.length > 1 && (
+          <div className="border-b border-gray-100 pb-2">
+            <span className="text-gray-500">Booked together</span>
+            <ul className="mt-1 space-y-1">
+              {data.group.map((g) => (
+                <li key={g.id} className="flex flex-wrap items-center justify-between gap-2">
+                  {g.id === data.id ? (
+                    <span className="font-bold">{g.resource_name} (this booking)</span>
+                  ) : (
+                    <Link to={`/bookings/${g.id}`} className="font-bold text-scout-purple">{g.resource_name} · Ref {g.reference}</Link>
+                  )}
+                  <span className="flex items-center gap-2 text-sm">{formatGBP(g.total_amount_pence)} <StatusBadge status={g.status} /></span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-xs text-gray-500">Each resource has its own booking, so it can be approved, changed or cancelled on its own.</p>
           </div>
         )}
         {data.customer_email && <Row label="Email" value={data.customer_email} />}

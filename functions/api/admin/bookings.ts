@@ -39,7 +39,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 
   const rows = await env.DB.prepare(
-    `SELECT b.id, b.reference, ${effectiveStatusSql('b')} AS status, b.expires_at, b.series_id, b.resource_id, b.starts_at, b.ends_at, b.total_amount_pence,
+    `SELECT b.id, b.reference, ${effectiveStatusSql('b')} AS status, b.expires_at, b.series_id, b.group_id, b.resource_id, b.starts_at, b.ends_at, b.total_amount_pence,
             r.name AS resource_name, u.full_name AS customer_name, u.email AS customer_email,
             u.phone_encrypted AS phone_encrypted, b.user_id, b.organisation_id, o.name AS organisation_name
      FROM bookings b JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id

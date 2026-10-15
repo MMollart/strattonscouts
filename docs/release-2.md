@@ -18,6 +18,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | `0011_email_templates.sql` | FR06 Email templates & history |
 | *(none)* | FR09 Admin calendar (reads existing tables) |
 | `0012_assets.sql` | FR07 Physical asset management |
+| `0013_booking_groups.sql` | Several resources in one booking |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -244,6 +245,13 @@ overridden. Booking details show the override history to administrators.
 - Rules are managed under Admin → Resources (*Recurring availability rules*,
   and *Booking limits* per resource) rather than on a new page.
 
+**On the availability calendar.** The public calendar feed returns each
+resource's rules, and the calendar evaluates them with the same shared code
+the server uses: times outside opening hours, inside a recurring restriction,
+or outside the notice and advance windows are shown light grey as *Not
+bookable* and cannot be selected (hovering gives the reason). Days with no
+bookable time are grey in month view. The server still checks every booking.
+
 ## FR04 – Provisional bookings & automatic expiry
 
 **Statuses.** `provisional` and `expired` join the Release 1 statuses.
@@ -288,7 +296,8 @@ npm run scheduler:deploy   # wrangler deploy --config workers/scheduler/wrangler
 ```
 
 When email sending is configured, give the Worker the same `EMAIL_PROVIDER`,
-`EMAIL_FROM` and `EMAIL_API_KEY` as the Pages project
+`EMAIL_FROM`, `MS_TENANT_ID`, `MS_CLIENT_ID` and `EMAIL_API_KEY` as the Pages
+project (see *Sending email through Office 365* in the README)
 (`npx wrangler secret put EMAIL_API_KEY --config workers/scheduler/wrangler.toml --env production`).
 
 ## FR05 – Recurring bookings
@@ -409,6 +418,14 @@ gets an idempotency key, so retries never produce duplicates. Template
 parameters are kept only while a retry is pending, and never for invitation
 or password reset emails, whose links are single-use secrets.
 
+**Office 365.** With `EMAIL_PROVIDER=office365` emails are sent from the
+`EMAIL_FROM` mailbox through Microsoft Graph using an app-only token
+(client credentials, cached until shortly before expiry). Throttling (429),
+outages (5xx) and an expired token (401) are retried; refused requests and
+missing configuration are recorded as failed and not retried. Graph has no
+idempotency key, so a send whose response was lost in transit could in rare
+cases be delivered twice on retry. Setup steps are in the README.
+
 **Payment reminder.** Admins with `bookings.manage` can send one from a
 confirmed, chargeable booking's page. Payment itself remains out of scope.
 
@@ -472,3 +489,27 @@ act simultaneously.
 and when, who recorded the return and when, the outcome, and the notes from
 both ends. Rows are never deleted. Users see the items currently lent to them
 under My account → *On loan to you*.
+
+## Several resources in one booking
+
+On the booking page, *Add more resources at the same time* lets a customer
+book, for example, the Main Hall and the Kitchen together. Each extra resource
+is checked and priced live, and a combined total is shown.
+`POST /api/bookings` accepts `additional_resource_ids`.
+
+**Decision: one booking per resource, linked by a group.** Each resource keeps
+its own booking row, reference, price and approval, so approval stays per
+resource as agreed: a hall that needs approval waits for it, while the
+kitchen booked with it can be confirmed at once. Changes and cancellations
+also work per resource. `bookings.group_id` links them, and the booking page
+lists the bookings made together. The alternative, one booking spanning
+several resources, would have forced a single status and price on resources
+with different rules.
+
+**All or nothing.** Every resource is validated exactly as a single booking
+(rules, closures, notice, provisional holds), then all of them are inserted
+in one guarded batch: if any resource is taken meanwhile, nothing is booked.
+Resources that include each other (a hall and the Whole Venue) cannot be
+combined. The customer gets one email per outcome (confirmed, awaiting
+approval, provisional) naming every resource it covers, rather than one
+email per resource. Recurring bookings remain single-resource.

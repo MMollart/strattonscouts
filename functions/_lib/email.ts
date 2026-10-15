@@ -66,10 +66,79 @@ function retryDelayMinutes(attempt: number): number {
 
 type DeliveryResult = { status: 'sent'; providerRef: string | null } | { status: 'failed'; error: string; retryable: boolean };
 
+/** Cached Microsoft Graph app token, reused until shortly before it expires. */
+let graphToken: { key: string; token: string; expiresAt: number } | null = null;
+
+/** For tests: forget the cached Graph token. */
+export function resetGraphTokenCache(): void {
+  graphToken = null;
+}
+
+/**
+ * An app-only token for Microsoft Graph (client credentials grant). The app
+ * registration needs the Mail.Send application permission; EMAIL_API_KEY
+ * holds its client secret.
+ */
+async function graphAccessToken(env: Env): Promise<string> {
+  const key = `${env.MS_TENANT_ID}|${env.MS_CLIENT_ID}`;
+  if (graphToken && graphToken.key === key && graphToken.expiresAt > Date.now() + 60_000) return graphToken.token;
+  if (!env.MS_TENANT_ID || !env.MS_CLIENT_ID || !env.EMAIL_API_KEY) throw new GraphConfigError('Office 365 email is not configured (MS_TENANT_ID, MS_CLIENT_ID and EMAIL_API_KEY are required)');
+  const res = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(env.MS_TENANT_ID)}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: env.MS_CLIENT_ID,
+      client_secret: env.EMAIL_API_KEY,
+      scope: 'https://graph.microsoft.com/.default',
+    }),
+  });
+  if (!res.ok) {
+    // A wrong or expired secret will not fix itself; an outage might.
+    const temporary = res.status === 429 || res.status >= 500;
+    throw temporary ? new Error(`Office 365 sign-in responded ${res.status}`) : new GraphConfigError(`Office 365 sign-in refused (${res.status}); check the app registration and client secret`);
+  }
+  const body = (await res.json()) as { access_token: string; expires_in: number };
+  graphToken = { key, token: body.access_token, expiresAt: Date.now() + body.expires_in * 1000 };
+  return body.access_token;
+}
+
+class GraphConfigError extends Error {}
+
+/** Send through the EMAIL_FROM mailbox with Microsoft Graph sendMail. */
+async function deliverViaGraph(env: Env, to: string, email: RenderedEmail): Promise<DeliveryResult> {
+  let token: string;
+  try {
+    token = await graphAccessToken(env);
+  } catch (e) {
+    return { status: 'failed', error: e instanceof Error ? e.message : String(e), retryable: !(e instanceof GraphConfigError) };
+  }
+  const from = env.EMAIL_FROM ?? '';
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(from)}/sendMail`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      message: {
+        subject: email.subject,
+        body: { contentType: 'HTML', content: email.html },
+        toRecipients: [{ emailAddress: { address: to } }],
+      },
+      saveToSentItems: true,
+    }),
+  });
+  if (res.status === 202 || res.ok) return { status: 'sent', providerRef: res.headers.get('request-id') };
+  // A rejected token is usually an expired cache entry: drop it and retry later.
+  if (res.status === 401) graphToken = null;
+  return { status: 'failed', error: `Office 365 responded ${res.status}`, retryable: res.status === 401 || res.status === 429 || res.status >= 500 };
+}
+
 /** Hand a rendered email to the configured provider (console in development). */
 async function deliver(env: Env, to: string, email: RenderedEmail, idempotencyKey: string, label: string): Promise<DeliveryResult> {
   try {
     const provider = (env.EMAIL_PROVIDER ?? 'console').toLowerCase();
+    if (provider === 'office365' || provider === 'graph') {
+      return await deliverViaGraph(env, to, email);
+    }
     if (provider === 'resend') {
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',

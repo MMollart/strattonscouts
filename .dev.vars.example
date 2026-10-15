@@ -8,9 +8,11 @@
 APP_BASE_URL="http://localhost:5173"
 
 # Transactional email provider (e.g. Resend, Postmark, SendGrid). Configurable.
-EMAIL_PROVIDER="console"          # "console" (dev log), "resend", etc.
-EMAIL_API_KEY=""                   # provider API key (SECRET)
-EMAIL_FROM="bookings@strattonscouts.example"
+EMAIL_PROVIDER="console"          # "console" (dev log), "office365" or "resend"
+EMAIL_API_KEY=""                   # provider API key; Office 365: client secret (SECRET)
+EMAIL_FROM="bookings@strattonscouts.example"  # Office 365: the sending mailbox
+MS_TENANT_ID=""                    # Office 365 only: directory (tenant) ID
+MS_CLIENT_ID=""                    # Office 365 only: application (client) ID
 
 # Secret used to sign/verify data at rest (e.g. encrypting contact info). SECRET.
 DATA_ENCRYPTION_KEY=""
