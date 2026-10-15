@@ -550,5 +550,6 @@ hold overlapping upcoming bookings, because they would then double-book.
 is the nearest resource it conflicted with that conflicted with more
 resources than it did, otherwise the single combined resource. Production on
 2026-10-15 fitted this exactly (Whole Venue > Building > Main Hall, Small
-Hall, Kitchen; everything else directly under the Whole Venue), so the matrix
-and `resource_type` are dropped.
+Hall, Kitchen; everything else directly under the Whole Venue). The old
+`resource_conflicts` table and `resource_type` column are left unused so the
+migration can run before the new code deploys; a later migration drops them.

@@ -1,4 +1,5 @@
 -- Resource hierarchy replaces the conflict matrix and the 'combined' type.
+-- Safe to apply before deploying the code that uses it.
 --
 -- Each resource may be part of a parent (Main Hall is part of Indoor, which is
 -- part of the Whole Venue). Booking or closing a resource blocks everything
@@ -41,5 +42,6 @@ DROP TABLE _conflict_partners;
 
 CREATE INDEX idx_resources_parent ON resources(parent_id);
 
-DROP TABLE resource_conflicts;
-ALTER TABLE resources DROP COLUMN resource_type;
+-- resource_conflicts and resources.resource_type are no longer read, but are
+-- left in place so this migration can run before the new code is deployed
+-- without breaking the code that is live. A later migration drops them.
