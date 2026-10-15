@@ -1,15 +1,17 @@
 import type { Env } from '../../_lib/http';
 import { json } from '../../_lib/http';
 import { loadCurrentPrices, type PublicPrice } from '../../_lib/public-prices';
+import { loadAncestorMap } from '../../_lib/hierarchy';
 
 // Public: list active resources with primary image key and category prices.
 export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
   const resources = await env.DB.prepare(
-    `SELECT id, name, slug, description, resource_type, is_active, requires_approval, pricing_model, min_notice_minutes, max_advance_days, created_at, updated_at
+    `SELECT id, name, slug, description, parent_id, is_active, requires_approval, pricing_model, min_notice_minutes, max_advance_days, created_at, updated_at
      FROM resources WHERE is_active = 1 ORDER BY name`,
   ).all();
 
   const prices = await loadCurrentPrices(env);
+  const ancestors = await loadAncestorMap(env);
 
   const images = await env.DB.prepare(
     'SELECT resource_id, r2_key FROM resource_images WHERE is_primary = 1',
@@ -26,6 +28,9 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
     requires_approval: !!(r.requires_approval as number),
     prices: priceMap[r.id as string] ?? [],
     primary_image_key: imageMap[r.id as string] ?? null,
+    // Every resource above this one, nearest first, so the booking page can
+    // stop a parent and its child being picked together.
+    ancestor_ids: ancestors.get(r.id as string) ?? [],
   }));
 
   return json(data);

@@ -9,7 +9,6 @@ import { formatLondon, fromLondon, londonToday } from '@shared/londonTime';
 import { poundsToPence } from '../../lib/money';
 
 interface ResourceRow { id: string; name: string; }
-interface ConflictRow { id: string; resource_id: string; conflicts_with_id: string; is_mandatory: boolean; }
 interface CategoryRow { id: string; name: string; label: string; sort_order: number; is_active: boolean; discount_bp: number; }
 interface RateRow {
   id: string; resource_id: string; pricing_model: RateModel;
@@ -21,7 +20,7 @@ interface DiscountRow {
   effective_from: string; effective_to: string | null; is_active: boolean;
 }
 
-type Tab = 'rates' | 'discounts' | 'categories' | 'organisations' | 'conflicts';
+type Tab = 'rates' | 'discounts' | 'categories' | 'organisations';
 
 /** A London calendar date as the start-of-day instant, or null for blank. */
 function dateToIso(date: string): string | null {
@@ -46,13 +45,12 @@ export default function AdminPricing() {
     ['discounts', 'Discounts'],
     ['organisations', 'Organisation pricing'],
     ['categories', 'Categories'],
-    ['conflicts', 'Conflict matrix'],
   ];
 
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Pricing &amp; conflicts</h1>
+        <h1 className="text-3xl">Pricing</h1>
         <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
       </div>
       <p className="mt-2 text-sm text-gray-600">Changes apply to bookings priced from now on. Existing bookings keep the price agreed when they were made.</p>
@@ -80,7 +78,6 @@ export default function AdminPricing() {
           reload={async () => setCategories(await api.get<CategoryRow[]>('/admin/categories'))}
         />
       )}
-      {tab === 'conflicts' && <ConflictMatrix resources={resources} />}
     </div>
   );
 }
@@ -656,94 +653,5 @@ function CategoryItem({ category: c, canEdit, onSave }: { category: CategoryRow;
         </span>
       )}
     </li>
-  );
-}
-
-// Retained from Release 1.
-function ConflictMatrix({ resources }: { resources: ResourceRow[] }) {
-  const { can } = useAuth();
-  const { data, loading, error } = useApi<ConflictRow[]>('/admin/conflicts');
-  const [edges, setEdges] = useState<ConflictRow[]>([]);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [working, setWorking] = useState(false);
-
-  useEffect(() => { if (data) setEdges(data); }, [data]);
-
-  async function reload() {
-    setEdges(await api.get<ConflictRow[]>('/admin/conflicts'));
-  }
-
-  function relation(a: string, b: string): ConflictRow | undefined {
-    return edges.find((e) => e.resource_id === a && e.conflicts_with_id === b);
-  }
-
-  async function toggle(a: string, b: string, current?: ConflictRow) {
-    if (a === b) return;
-    setWorking(true);
-    setMsg(null);
-    try {
-      if (current) {
-        if (current.is_mandatory) {
-          setMsg('Mandatory conflicts cannot be removed.');
-          return;
-        }
-        await api.del('/admin/conflicts', { resource_id: a, conflicts_with_id: b });
-      } else {
-        await api.post('/admin/conflicts', { resource_id: a, conflicts_with_id: b });
-      }
-      await reload();
-    } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : 'Update failed');
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  if (loading) return <Spinner />;
-  if (error) return <ErrorState message={error} />;
-
-  return (
-    <div className="card mt-6 overflow-x-auto">
-      <h2 className="text-xl">Conflict matrix</h2>
-      <p className="mt-1 text-xs text-gray-500">
-        A ticked cell means the two resources cannot be booked at the same time. Mandatory rules (shaded) cannot be removed.
-        Changes do not affect existing bookings.
-      </p>
-      {msg && <p className="mt-2 text-sm font-bold text-scout-red">{msg}</p>}
-      <table className="mt-4 min-w-full border-collapse text-sm">
-        <thead>
-          <tr>
-            <th className="p-2 text-left"></th>
-            {resources.map((r) => (
-              <th key={r.id} className="p-2 text-center align-bottom">
-                <span className="block max-w-[5rem] text-xs">{r.name}</span>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {resources.map((row) => (
-            <tr key={row.id}>
-              <th className="p-2 text-left text-xs font-bold">{row.name}</th>
-              {resources.map((col) => {
-                const rel = relation(row.id, col.id);
-                const self = row.id === col.id;
-                return (
-                  <td key={col.id} className={`border p-2 text-center ${rel?.is_mandatory ? 'bg-scout-off-white' : ''}`}>
-                    <input
-                      type="checkbox"
-                      aria-label={`${row.name} conflicts with ${col.name}`}
-                      checked={!!rel}
-                      disabled={self || working || rel?.is_mandatory || !can('resources.manage')}
-                      onChange={() => toggle(row.id, col.id, rel)}
-                    />
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   weekdayMondayFirst,
 } from '@shared/londonTime';
 import { evaluateRestrictions, type AvailabilityRule } from '@shared/availability-rules';
+import { blockedMessage, type BlockedBy } from '@shared/hierarchy';
 
 type View = 'month' | 'week' | 'day';
 type SlotState = 'free' | 'booked' | 'closed' | 'restricted' | 'past';
@@ -19,6 +20,15 @@ interface BusyPeriod {
   starts_at: string;
   ends_at: string;
   kind: 'booked' | 'closed';
+  /** The resource booked or closed: this one, a parent that includes it or a child that is part of it. */
+  resource_name: string;
+  relation: BlockedBy['relation'];
+}
+
+/** Why a slot is booked or closed when a parent or child causes it, e.g. "Whole Venue is booked at this time, and it includes this resource." */
+function busyReason(start: string, end: string, busy: BusyPeriod[], kind: BusyPeriod['kind']): string | null {
+  const period = busy.find((b) => b.kind === kind && b.relation !== 'self' && overlaps(start, end, b.starts_at, b.ends_at));
+  return period ? blockedMessage(kind, { name: period.resource_name, relation: period.relation }) : null;
 }
 
 interface Restrictions {
@@ -165,7 +175,8 @@ export default function AvailabilityCalendar({
     const end = fromLondon(hour + 1 === 24 ? addDays(date, 1) : date, hour + 1 === 24 ? '00:00' : hh(hour + 1));
     const state = slotState(start, end, busy, nowIso, restrictions);
     const selected = isSelected(start, end);
-    const reason = state === 'restricted' ? ruleBlock(start, end, restrictions) : null;
+    const reason =
+      state === 'restricted' ? ruleBlock(start, end, restrictions) : state === 'booked' || state === 'closed' ? busyReason(start, end, busy, state) : null;
     const label = `${formatLondon(start, { weekday: 'long', day: 'numeric', month: 'long' })}, ${hh(hour)} to ${hh(hour + 1)}, ${STATE_LABEL[state]}${reason ? `: ${reason}` : ''}`;
     return (
       <button

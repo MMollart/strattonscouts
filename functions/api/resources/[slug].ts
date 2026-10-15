@@ -9,7 +9,7 @@ import { describeRule } from '@shared/availability-rules';
 export const onRequestGet: PagesFunction<Env> = async ({ env, params }) => {
   const slug = String(params.slug);
   const r = await env.DB.prepare(
-    `SELECT id, name, slug, description, resource_type, is_active, requires_approval, pricing_model, min_notice_minutes, max_advance_days, provisional_expiry_hours, created_at, updated_at
+    `SELECT id, name, slug, description, parent_id, is_active, requires_approval, pricing_model, min_notice_minutes, max_advance_days, provisional_expiry_hours, created_at, updated_at
      FROM resources WHERE slug = ?`,
   )
     .bind(slug)

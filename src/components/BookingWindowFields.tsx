@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { fromLondon } from '@shared/londonTime';
+import { blockedMessage, type BlockedBy } from '@shared/hierarchy';
 
 export interface BookingWindow {
   startDate: string;
@@ -75,6 +76,8 @@ export interface AvailabilityResult {
   status: AvailabilityStatus;
   /** Why the window is restricted (FR03), when status is 'restricted'. */
   violations: AvailabilityViolation[];
+  /** The resource whose booking or closure makes this one unavailable. */
+  blockedBy?: BlockedBy;
 }
 
 const IDLE: AvailabilityResult = { status: 'idle', violations: [] };
@@ -93,10 +96,10 @@ export function useAvailability(resourceId: string | undefined, window: { starts
     setResult({ status: 'checking', violations: [] });
     const timer = setTimeout(() => {
       api
-        .get<{ available: boolean; reason?: 'closure' | 'conflict' | 'inactive' | 'restricted'; violations?: AvailabilityViolation[] }>(
+        .get<{ available: boolean; reason?: 'closure' | 'conflict' | 'inactive' | 'restricted'; violations?: AvailabilityViolation[]; blocked_by?: BlockedBy }>(
           `/availability?resource_id=${encodeURIComponent(resourceId)}&starts_at=${encodeURIComponent(startsAt)}&ends_at=${encodeURIComponent(endsAt)}`,
         )
-        .then((r) => current && setResult({ status: r.available ? 'available' : (r.reason ?? 'conflict'), violations: r.violations ?? [] }))
+        .then((r) => current && setResult({ status: r.available ? 'available' : (r.reason ?? 'conflict'), violations: r.violations ?? [], blockedBy: r.blocked_by }))
         .catch(() => current && setResult({ status: 'error', violations: [] }));
     }, 300);
     return () => {
@@ -118,13 +121,20 @@ export const AVAILABILITY_MESSAGE: Record<AvailabilityStatus, string> = {
   error: 'Could not check availability right now.',
 };
 
+/** The availability line, naming the parent or child that blocks the time when there is one. */
+export function availabilityMessage(result: AvailabilityResult): string {
+  if (result.status === 'conflict') return `Not available: ${blockedMessage('booked', result.blockedBy)}`;
+  if (result.status === 'closure') return `Not available: ${blockedMessage('closed', result.blockedBy)}`;
+  return AVAILABILITY_MESSAGE[result.status];
+}
+
 /** The live availability line under a booking window, with any rule details. */
 export function AvailabilityNotice({ result }: { result: AvailabilityResult }) {
   if (result.status === 'idle') return null;
   const colour = result.status === 'available' ? 'text-scout-green' : result.status === 'checking' ? 'text-gray-500' : 'text-scout-red';
   return (
     <div role="status">
-      <p className={`text-sm font-bold ${colour}`}>{AVAILABILITY_MESSAGE[result.status]}</p>
+      <p className={`text-sm font-bold ${colour}`}>{availabilityMessage(result)}</p>
       {result.violations.length > 0 && (
         <ul className="mt-1 list-disc pl-5 text-sm text-scout-red">
           {result.violations.map((v) => <li key={v.kind + v.message}>{v.message}</li>)}

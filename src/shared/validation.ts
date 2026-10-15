@@ -76,7 +76,8 @@ export const resourceUpsertSchema = z.object({
     .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens')
     .max(120),
   description: z.string().max(5000).default(''),
-  resource_type: z.enum(['individual', 'combined']).default('individual'),
+  /** The resource this one is part of (Main Hall is part of Indoor); null at the top. */
+  parent_id: z.string().min(1).nullable().default(null),
   is_active: z.boolean().default(true),
   requires_approval: z.boolean().default(false),
   pricing_model: pricingModelSchema.default('hourly'),
@@ -87,11 +88,6 @@ export const pricingUpsertSchema = z.object({
   category_id: z.string().min(1),
   amount_pence: z.number().int().min(0),
   is_free: z.boolean().default(false),
-});
-
-export const conflictUpsertSchema = z.object({
-  resource_id: z.string().min(1),
-  conflicts_with_id: z.string().min(1),
 });
 
 export const closureSchema = z

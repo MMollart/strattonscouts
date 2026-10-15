@@ -69,7 +69,7 @@ export async function transitionBooking(
 
   if (args.to === 'confirmed') {
     // Revalidate on approval: the period must still be free of other active
-    // bookings (e.g. after a conflict-matrix change) and of closures.
+    // bookings (e.g. after a resource moved under a new parent) and of closures.
     const closure = await env.DB.prepare(OVERLAPPING_CLOSURE_SQL)
       .bind(...closureBinds(booking.resource_id), booking.ends_at, booking.starts_at)
       .first();

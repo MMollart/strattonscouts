@@ -2,7 +2,6 @@
 import type { AdminRole, Permission } from './permissions';
 
 export type PricingModel = 'hourly' | 'nightly' | 'fixed';
-export type ResourceType = 'individual' | 'combined';
 
 // Release 1 statuses plus provisional holds and their expiry (FR04).
 export type BookingStatus =
@@ -39,7 +38,8 @@ export interface Resource {
   name: string;
   slug: string;
   description: string;
-  resource_type: ResourceType;
+  /** The resource this one is part of; booking either blocks the other. */
+  parent_id: string | null;
   is_active: boolean;
   requires_approval: boolean;
   pricing_model: PricingModel;
@@ -62,13 +62,6 @@ export interface ResourcePrice {
   category_id: string;
   amount_pence: number;
   is_free: boolean;
-}
-
-export interface ResourceConflict {
-  id: string;
-  resource_id: string;
-  conflicts_with_id: string;
-  is_mandatory: boolean;
 }
 
 export interface Booking {

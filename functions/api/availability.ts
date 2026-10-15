@@ -34,8 +34,17 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   if (!resource.is_active) return json({ available: false, reason: 'inactive' });
 
   const busy = await loadBusyPeriods(env, resourceId, startsAt, endsAt);
-  if (busy.some((p) => p.kind === 'closed')) return json({ available: false, reason: 'closure' });
-  if (busy.length) return json({ available: false, reason: 'conflict' });
+  // Name the resource that causes it (this one, a parent that includes it or a
+  // child that is part of it), never who booked it.
+  const closed = busy.find((p) => p.kind === 'closed');
+  const blocker = closed ?? busy[0];
+  if (blocker) {
+    return json({
+      available: false,
+      reason: closed ? 'closure' : 'conflict',
+      blocked_by: { name: blocker.resource_name, relation: blocker.relation },
+    });
+  }
   // Booking restrictions (FR03): notice, advance window, recurring rules, opening hours.
   const violations = await checkRestrictions(env, resourceId, startsAt, endsAt);
   if (violations.length) {

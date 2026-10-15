@@ -2,7 +2,8 @@ import type { Env } from '../../../_lib/http';
 import { error, json, now } from '../../../_lib/http';
 import { requirePermission } from '../../../_lib/auth';
 import { resourceUpsertSchema } from '@shared/validation';
-import { syncMandatoryConflicts } from '../../../_lib/conflicts';
+import { checkParent } from '../../../_lib/hierarchy';
+import { DESCENDANTS_SQL } from '../../../_lib/availability-sql';
 
 // Admin: update a resource (edit, enable/disable, approval, model, description).
 export const onRequestPut: PagesFunction<Env> = async ({ env, request, params }) => {
@@ -27,24 +28,31 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request, params })
     .first();
   if (slugClash) return error('A resource with this slug already exists', 409);
 
-  await env.DB.prepare(
-    `UPDATE resources SET name = ?, slug = ?, description = ?, resource_type = ?, is_active = ?, requires_approval = ?, pricing_model = ?, updated_at = ? WHERE id = ?`,
+  const parentProblem = await checkParent(env, id, parsed.data.parent_id);
+  if (parentProblem) return error(parentProblem, 400);
+
+  // Setting the parent re-checks for a loop in the same statement, so two
+  // admins saving at once cannot close one.
+  const result = await env.DB.prepare(
+    `UPDATE resources SET name = ?, slug = ?, description = ?, parent_id = ?, is_active = ?, requires_approval = ?, pricing_model = ?, updated_at = ?
+     WHERE id = ? AND (? IS NULL OR ? NOT IN (${DESCENDANTS_SQL}))`,
   )
     .bind(
       parsed.data.name,
       parsed.data.slug,
       parsed.data.description,
-      parsed.data.resource_type,
+      parsed.data.parent_id,
       parsed.data.is_active ? 1 : 0,
       parsed.data.requires_approval ? 1 : 0,
       parsed.data.pricing_model,
       now(),
       id,
+      parsed.data.parent_id,
+      parsed.data.parent_id,
+      id,
     )
     .run();
-
-  // A type change (individual <-> combined) changes the mandatory conflicts.
-  await syncMandatoryConflicts(env, id);
+  if (!result.meta.changes) return error('That parent would make a loop. Please reload and try again.', 409);
 
   return json({ ok: true });
 };

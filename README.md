@@ -3,7 +3,7 @@
 A Scouts-branded resource booking website for Stratton Scouts, built entirely on
 the Cloudflare developer platform. Customers can browse facilities, check live
 availability, register, and book resources; administrators manage resources,
-pricing, availability, the conflict matrix, and booking approvals.
+pricing, availability, the resource hierarchy, and booking approvals.
 
 > **Release 2** adds organisations, advanced pricing and availability rules,
 > provisional and recurring bookings, amendments, configurable email templates,
@@ -89,10 +89,10 @@ tests/                 Vitest suites (pricing, availability, booking concurrency
 
    The seed creates the three pricing categories (Scouts / Community / Public),
    the six resources (Whole Venue, Small Hall, Main Hall, Kitchen, Event Field,
-   Camping), illustrative prices, and the mandatory conflict matrix
-   (self-conflicts plus the Whole Venue relationships). Migration 0014 turns
-   those prices into one full price per resource (the public price) and a
-   discount per pricing category; see docs/release-2.md.
+   Camping) and illustrative prices. Migration 0014 turns those prices into one
+   full price per resource (the public price) and a discount per pricing
+   category, and migration 0015 puts every resource under the Whole Venue
+   (regroup them in Admin → Resources); see docs/release-2.md.
 
 4. **Run the frontend dev server**
 
@@ -161,7 +161,7 @@ How double bookings are prevented: the booking row is written by a single
 overtaken by a competing write.
 
 The `pricing`, `availability` and `londonTime` suites cover rounding rules, free
-pricing, nights counted by UK calendar date, the conflict matrix, and UK
+pricing, nights counted by UK calendar date, the resource hierarchy, and UK
 (GMT/BST) time conversion.
 
 ## Deployment (Cloudflare Pages)
