@@ -1,0 +1,19 @@
+# ---------------------------------------------------------------------------
+# Example environment variables / secrets for Stratton Scouts booking platform.
+# Copy to `.dev.vars` for local development (NEVER commit `.dev.vars`).
+# In production set these via `wrangler pages secret put <NAME>`.
+# ---------------------------------------------------------------------------
+
+# Public application base URL (used in emails and password reset links)
+APP_BASE_URL="http://localhost:5173"
+
+# Transactional email provider (e.g. Resend, Postmark, SendGrid). Configurable.
+EMAIL_PROVIDER="console"          # "console" (dev log), "resend", etc.
+EMAIL_API_KEY=""                   # provider API key (SECRET)
+EMAIL_FROM="bookings@strattonscouts.example"
+
+# Secret used to sign/verify data at rest (e.g. encrypting contact info). SECRET.
+DATA_ENCRYPTION_KEY=""
+
+# Secret used when bootstrapping the initial Super Admin account. SECRET.
+BOOTSTRAP_ADMIN_TOKEN=""
