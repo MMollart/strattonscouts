@@ -1,6 +1,6 @@
 import type { Env } from '../../_lib/http';
 import { error, json, newId, now } from '../../_lib/http';
-import { hashPassword, encryptAtRest } from '../../_lib/crypto';
+import { hashPassword, verifyPassword, encryptAtRest } from '../../_lib/crypto';
 
 /**
  * Secure bootstrap for the initial Super Admin. Guarded by the
@@ -42,8 +42,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   if (!cat || !superRole) return error('Database is not seeded', 500);
 
   let userId: string;
-  const existingUser = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: string }>();
+  const existingUser = await env.DB.prepare('SELECT id, password_hash FROM users WHERE email = ?')
+    .bind(email)
+    .first<{ id: string; password_hash: string }>();
   if (existingUser) {
+    // Promoting an existing account requires that account's own password.
+    if (!(await verifyPassword(body.password, existingUser.password_hash))) {
+      return error('Invalid credentials for the existing account', 403);
+    }
     userId = existingUser.id;
   } else {
     userId = newId('usr');

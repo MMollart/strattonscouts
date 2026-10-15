@@ -52,6 +52,15 @@ describe('pricing engine', () => {
     ).toBe(0);
   });
 
+  it('counts nights by UK calendar date, not by 24-hour blocks', () => {
+    // Friday 14:00 to Sunday 16:00 is two nights, not three.
+    expect(billableNights('2026-06-05T13:00:00Z', '2026-06-07T15:00:00Z')).toBe(2);
+    // A late arrival after midnight UTC but before midnight BST is still that evening.
+    expect(billableNights('2026-06-05T22:30:00Z', '2026-06-06T09:00:00Z')).toBe(1);
+    // Across the clocks going back (25 October 2026).
+    expect(billableNights('2026-10-24T16:00:00Z', '2026-10-26T10:00:00Z')).toBe(2);
+  });
+
   it('bills a minimum of one hour / one night', () => {
     expect(billableHours('2026-01-01T10:00:00Z', '2026-01-01T10:10:00Z')).toBe(1);
     expect(billableNights('2026-01-01T10:00:00Z', '2026-01-01T12:00:00Z')).toBe(1);

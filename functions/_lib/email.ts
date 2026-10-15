@@ -50,11 +50,39 @@ export function renderTemplate(template: EmailTemplate, params: Record<string, s
   return { subject: fill(def.subject), body: fill(def.body) };
 }
 
+const LONDON = 'Europe/London';
+const dateFmt = new Intl.DateTimeFormat('en-GB', {
+  timeZone: LONDON,
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
+const timeFmt = new Intl.DateTimeFormat('en-GB', { timeZone: LONDON, hour: '2-digit', minute: '2-digit' });
+
+/** Booking date/time placeholders, formatted in UK local time (GMT/BST). */
+export function bookingTimeParams(startsAt: string, endsAt: string): {
+  booking_date: string;
+  booking_start_time: string;
+  booking_end_time: string;
+} {
+  const start = new Date(startsAt);
+  const end = new Date(endsAt);
+  const startDate = dateFmt.format(start);
+  const endDate = dateFmt.format(end);
+  return {
+    booking_date: startDate === endDate ? startDate : `${startDate} to ${endDate}`,
+    booking_start_time: timeFmt.format(start),
+    booking_end_time: timeFmt.format(end),
+  };
+}
+
 /**
- * Send a transactional email. Idempotent via dedupeKey — duplicate sends
- * (e.g. retried booking submissions) are suppressed. Failures are recorded
- * but never thrown so that booking creation is not rolled back when the email
- * provider is temporarily unavailable.
+ * Send a transactional email. Idempotent via dedupeKey: a key that has already
+ * been sent (or is being sent) is skipped, so retried requests never send a
+ * duplicate, while a key whose previous attempt failed may be sent again.
+ * Failures are recorded but never thrown so that booking creation is not
+ * rolled back when the email provider is temporarily unavailable.
  */
 export async function sendEmail(
   env: Env,
@@ -66,14 +94,24 @@ export async function sendEmail(
     dedupeKey?: string;
   },
 ): Promise<void> {
-  // Deduplicate if a key was supplied and already recorded.
+  const eventId = newId('eml');
+
+  // Claim the dedupe key before sending. The upsert only takes over an
+  // existing row when its previous attempt failed.
   if (args.dedupeKey) {
-    const existing = await env.DB.prepare(
-      'SELECT id FROM email_events WHERE dedupe_key = ?',
-    )
-      .bind(args.dedupeKey)
-      .first<{ id: string }>();
-    if (existing) return;
+    try {
+      const claim = await env.DB.prepare(
+        `INSERT INTO email_events (id, booking_id, recipient, template, dedupe_key, status, error, created_at)
+         VALUES (?, ?, ?, ?, ?, 'sending', NULL, ?)
+         ON CONFLICT(dedupe_key) DO UPDATE SET status = 'sending', error = NULL, created_at = excluded.created_at
+         WHERE email_events.status = 'failed'`,
+      )
+        .bind(eventId, args.bookingId ?? null, args.to, args.template, args.dedupeKey, now())
+        .run();
+      if (claim.meta.changes === 0) return;
+    } catch {
+      // If bookkeeping is unavailable, still attempt the send.
+    }
   }
 
   const { subject, body } = renderTemplate(args.template, args.params);
@@ -110,20 +148,17 @@ export async function sendEmail(
   }
 
   try {
-    await env.DB.prepare(
-      'INSERT INTO email_events (id, booking_id, recipient, template, dedupe_key, status, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    )
-      .bind(
-        newId('eml'),
-        args.bookingId ?? null,
-        args.to,
-        args.template,
-        args.dedupeKey ?? null,
-        status,
-        errorMsg,
-        now(),
+    if (args.dedupeKey) {
+      await env.DB.prepare('UPDATE email_events SET status = ?, error = ? WHERE dedupe_key = ?')
+        .bind(status, errorMsg, args.dedupeKey)
+        .run();
+    } else {
+      await env.DB.prepare(
+        'INSERT INTO email_events (id, booking_id, recipient, template, dedupe_key, status, error, created_at) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)',
       )
-      .run();
+        .bind(eventId, args.bookingId ?? null, args.to, args.template, status, errorMsg, now())
+        .run();
+    }
   } catch {
     // Never let email bookkeeping break the caller.
   }

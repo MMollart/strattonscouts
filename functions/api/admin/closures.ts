@@ -1,6 +1,7 @@
 import type { Env } from '../../_lib/http';
 import { error, json, newId, now } from '../../_lib/http';
 import { getAuthUser, isAdmin } from '../../_lib/auth';
+import { canonicalIso } from '../../_lib/availability-sql';
 import { closureSchema } from '@shared/validation';
 
 // Admin: list closures (optionally filtered by resource).
@@ -32,7 +33,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   await env.DB.prepare(
     'INSERT INTO resource_closures (id, resource_id, starts_at, ends_at, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)',
   )
-    .bind(id, parsed.data.resource_id, parsed.data.starts_at, parsed.data.ends_at, parsed.data.reason ?? null, now())
+    .bind(
+      id,
+      parsed.data.resource_id,
+      canonicalIso(parsed.data.starts_at),
+      canonicalIso(parsed.data.ends_at),
+      parsed.data.reason ?? null,
+      now(),
+    )
     .run();
   return json({ id }, 201);
 };

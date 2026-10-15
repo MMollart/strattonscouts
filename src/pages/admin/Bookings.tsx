@@ -4,6 +4,14 @@ import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { Spinner, EmptyState, ErrorState, StatusBadge } from '../../components/ui';
 import { formatGBP } from '@shared/pricing';
+import { formatLondon, londonToday } from '@shared/londonTime';
+import {
+  AVAILABILITY_MESSAGE,
+  BookingWindowFields,
+  type BookingWindow,
+  useAvailability,
+  windowToIso,
+} from '../../components/BookingWindowFields';
 
 interface AdminBookingRow {
   id: string;
@@ -15,9 +23,11 @@ interface AdminBookingRow {
   resource_name: string;
   customer_name: string;
   customer_email: string;
+  customer_phone: string | null;
 }
 
-interface ResourceRow { id: string; name: string; }
+interface ResourceRow { id: string; name: string; is_active: boolean; }
+interface CustomerRow { id: string; full_name: string; email: string; category_label: string; }
 
 const STATUSES = ['pending_approval', 'confirmed', 'rejected', 'cancelled'];
 
@@ -30,6 +40,7 @@ export default function AdminBookings() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -84,6 +95,16 @@ export default function AdminBookings() {
         <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
       </div>
 
+      {creating ? (
+        <BookForCustomer
+          resources={(resources ?? []).filter((r) => r.is_active)}
+          onClose={() => setCreating(false)}
+          onCreated={async () => { setCreating(false); await load(); }}
+        />
+      ) : (
+        <button className="btn-primary mt-4" onClick={() => setCreating(true)}>Book for a customer</button>
+      )}
+
       <div className="card mt-6 grid gap-3 sm:grid-cols-3">
         <div>
           <label className="label" htmlFor="f-status">Status</label>
@@ -116,9 +137,12 @@ export default function AdminBookings() {
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <Link to={`/bookings/${b.id}`} className="font-black text-scout-purple">{b.resource_name}</Link>
-                    <p className="text-sm text-gray-600">{b.customer_name} · {b.customer_email}</p>
+                    <p className="text-sm text-gray-600">
+                      {b.customer_name} · <a className="underline" href={`mailto:${b.customer_email}`}>{b.customer_email}</a>
+                      {b.customer_phone && <> · <a className="underline" href={`tel:${b.customer_phone}`}>{b.customer_phone}</a></>}
+                    </p>
                     <p className="text-xs text-gray-500">
-                      Ref {b.reference} · {new Date(b.starts_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })} · {formatGBP(b.total_amount_pence)}
+                      Ref {b.reference} · {formatLondon(b.starts_at)} to {formatLondon(b.ends_at)} · {formatGBP(b.total_amount_pence)}
                     </p>
                   </div>
                   <StatusBadge status={b.status} />
@@ -140,5 +164,100 @@ export default function AdminBookings() {
         )}
       </div>
     </div>
+  );
+}
+
+function BookForCustomer({
+  resources,
+  onClose,
+  onCreated,
+}: {
+  resources: ResourceRow[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const { data: customers, loading, error: loadError } = useApi<CustomerRow[]>('/admin/users');
+  const [filter, setFilter] = useState('');
+  const [customerId, setCustomerId] = useState('');
+  const [resourceId, setResourceId] = useState(resources[0]?.id ?? '');
+  const [win, setWin] = useState<BookingWindow>(() => {
+    const today = londonToday();
+    return { startDate: today, startTime: '10:00', endDate: today, endTime: '12:00' };
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const iso = windowToIso(win);
+  const availability = useAvailability(resourceId || undefined, iso);
+
+  const matches = (customers ?? []).filter((c) =>
+    `${c.full_name} ${c.email}`.toLowerCase().includes(filter.trim().toLowerCase()),
+  );
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!customerId) return setError('Choose a customer');
+    if (!iso) return setError('The end must be after the start');
+    setSaving(true);
+    setError(null);
+    try {
+      // Same validation and pricing engine as customer bookings; the price uses
+      // the customer's category.
+      await api.post('/bookings', {
+        resource_id: resourceId,
+        starts_at: iso.startsAt,
+        ends_at: iso.endsAt,
+        on_behalf_of_user_id: customerId,
+      });
+      onCreated();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not create booking');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="card mt-4 space-y-4" onSubmit={submit} aria-labelledby="bfc-heading">
+      <h2 id="bfc-heading" className="text-xl">Book for a customer</h2>
+      {loading && <Spinner />}
+      {loadError && <ErrorState message={loadError} />}
+      {customers && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="bfc-filter">Find customer</label>
+            <input id="bfc-filter" className="input" placeholder="Name or email" value={filter} onChange={(e) => setFilter(e.target.value)} />
+          </div>
+          <div>
+            <label className="label" htmlFor="bfc-customer">Customer</label>
+            <select id="bfc-customer" className="input" value={customerId} onChange={(e) => setCustomerId(e.target.value)} required>
+              <option value="">Select a customer ({matches.length})</option>
+              {matches.slice(0, 200).map((c) => (
+                <option key={c.id} value={c.id}>{c.full_name} · {c.email} · {c.category_label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+      <div>
+        <label className="label" htmlFor="bfc-resource">Resource</label>
+        <select id="bfc-resource" className="input" value={resourceId} onChange={(e) => setResourceId(e.target.value)}>
+          {resources.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+        </select>
+      </div>
+      <BookingWindowFields value={win} onChange={setWin} idPrefix="bfc" />
+      {availability !== 'idle' && (
+        <p className={`text-sm font-bold ${availability === 'available' ? 'text-scout-green' : availability === 'checking' ? 'text-gray-500' : 'text-scout-red'}`} role="status">
+          {AVAILABILITY_MESSAGE[availability]}
+        </p>
+      )}
+      <p className="text-xs text-gray-500">
+        The booking is priced at the customer&apos;s category rate and follows the resource&apos;s approval setting. The customer is emailed.
+      </p>
+      {error && <ErrorState message={error} />}
+      <div className="flex gap-2">
+        <button className="btn-primary" disabled={saving || !customerId || !iso}>{saving ? 'Booking…' : 'Create booking'}</button>
+        <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+      </div>
+    </form>
   );
 }

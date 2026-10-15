@@ -5,6 +5,14 @@ import { api, ApiError } from '../lib/api';
 import { Spinner, ErrorState } from '../components/ui';
 import { calculateTotalPence, formatGBP } from '@shared/pricing';
 import { useAuth } from '../lib/auth';
+import { londonToday, toLondon } from '@shared/londonTime';
+import {
+  AVAILABILITY_MESSAGE,
+  BookingWindowFields,
+  type BookingWindow,
+  useAvailability,
+  windowToIso,
+} from '../components/BookingWindowFields';
 
 interface ResourceDetail {
   id: string;
@@ -17,8 +25,16 @@ interface ResourceDetail {
 
 interface Category { id: string; name: string; label: string; }
 
-function toISO(date: string, time: string): string {
-  return new Date(`${date}T${time}:00`).toISOString();
+function initialWindow(params: URLSearchParams): BookingWindow {
+  const start = params.get('start');
+  const end = params.get('end');
+  if (start && end && !Number.isNaN(Date.parse(start)) && !Number.isNaN(Date.parse(end))) {
+    const s = toLondon(start);
+    const e = toLondon(end);
+    return { startDate: s.date, startTime: s.time, endDate: e.date, endTime: e.time };
+  }
+  const today = londonToday();
+  return { startDate: today, startTime: '10:00', endDate: today, endTime: '12:00' };
 }
 
 export default function BookResource() {
@@ -29,42 +45,32 @@ export default function BookResource() {
   const { data: resource, loading, error } = useApi<ResourceDetail>(`/resources/${slug}`, [slug]);
   const { data: categories } = useApi<Category[]>('/categories');
 
-  const today = new Date().toISOString().slice(0, 10);
-  const [date, setDate] = useState(params.get('date') ?? today);
-  const [start, setStart] = useState(params.get('start') ?? '10:00');
-  const [end, setEnd] = useState(params.get('end') ?? '12:00');
+  const [win, setWin] = useState<BookingWindow>(() => initialWindow(params));
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const myCategory = categories?.find((c) => c.id === user?.pricing_category_id);
   const myPrice = resource?.prices.find((p) => myCategory && p.category === myCategory.name);
-
-  const [validStart, validEnd] = useMemo(() => {
-    try {
-      return [toISO(date, start), toISO(date, end)];
-    } catch {
-      return ['', ''];
-    }
-  }, [date, start, end]);
+  const iso = useMemo(() => windowToIso(win), [win]);
+  const availability = useAvailability(resource?.id, iso);
 
   const total = useMemo(() => {
-    if (!resource || !myPrice || !validStart || !validEnd) return null;
-    if (new Date(validEnd) <= new Date(validStart)) return null;
+    if (!resource || !myPrice || !iso) return null;
     return calculateTotalPence({
       pricingModel: resource.pricing_model,
       unitPricePence: myPrice.amount_pence,
       isFree: myPrice.is_free,
-      startsAt: validStart,
-      endsAt: validEnd,
+      startsAt: iso.startsAt,
+      endsAt: iso.endsAt,
     });
-  }, [resource, myPrice, validStart, validEnd]);
+  }, [resource, myPrice, iso]);
 
-  useEffect(() => setSubmitError(null), [date, start, end]);
+  useEffect(() => setSubmitError(null), [win]);
 
   async function submit() {
     if (!resource) return;
-    if (new Date(validEnd) <= new Date(validStart)) {
-      setSubmitError('End time must be after start time');
+    if (!iso) {
+      setSubmitError('The end must be after the start');
       return;
     }
     setSubmitting(true);
@@ -72,8 +78,8 @@ export default function BookResource() {
     try {
       const booking = await api.post<{ id: string }>('/bookings', {
         resource_id: resource.id,
-        starts_at: validStart,
-        ends_at: validEnd,
+        starts_at: iso.startsAt,
+        ends_at: iso.endsAt,
       });
       navigate(`/bookings/${booking.id}`);
     } catch (e) {
@@ -97,20 +103,16 @@ export default function BookResource() {
       )}
 
       <div className="card mt-6 space-y-4">
-        <div>
-          <label className="label" htmlFor="date">Date</label>
-          <input id="date" type="date" min={today} className="input" value={date} onChange={(e) => setDate(e.target.value)} />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label" htmlFor="start">Start time</label>
-            <input id="start" type="time" className="input" value={start} onChange={(e) => setStart(e.target.value)} />
-          </div>
-          <div>
-            <label className="label" htmlFor="end">End time</label>
-            <input id="end" type="time" className="input" value={end} onChange={(e) => setEnd(e.target.value)} />
-          </div>
-        </div>
+        <BookingWindowFields value={win} onChange={setWin} minDate={londonToday()} />
+        {!iso && <p className="text-sm text-scout-red">The end must be after the start.</p>}
+        {availability !== 'idle' && (
+          <p
+            className={`text-sm font-bold ${availability === 'available' ? 'text-scout-green' : availability === 'checking' ? 'text-gray-500' : 'text-scout-red'}`}
+            role="status"
+          >
+            {AVAILABILITY_MESSAGE[availability]}
+          </p>
+        )}
 
         <div className="rounded-xl bg-scout-off-white p-4">
           <div className="flex items-center justify-between">
@@ -126,7 +128,7 @@ export default function BookResource() {
 
         {submitError && <ErrorState message={submitError} />}
 
-        <button className="btn-primary w-full" onClick={submit} disabled={submitting || total === null}>
+        <button className="btn-primary w-full" onClick={submit} disabled={submitting || total === null || availability === 'conflict' || availability === 'closure' || availability === 'inactive'}>
           {submitting ? 'Submitting…' : resource.requires_approval ? 'Request booking' : 'Confirm booking'}
         </button>
       </div>

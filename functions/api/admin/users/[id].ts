@@ -48,7 +48,20 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request, params })
     if (parsed.data.revoke_role) {
       const role = await env.DB.prepare('SELECT id FROM roles WHERE name = ?').bind(parsed.data.revoke_role).first<{ id: string }>();
       if (role) {
-        await env.DB.prepare('DELETE FROM user_roles WHERE user_id = ? AND role_id = ?').bind(userId, role.id).run();
+        // Never remove the last Super Admin: the guard is part of the DELETE so
+        // two simultaneous revocations cannot both succeed.
+        const removed = await env.DB.prepare(
+          `DELETE FROM user_roles WHERE user_id = ? AND role_id = ?
+           AND (? <> 'super_admin' OR (SELECT COUNT(*) FROM user_roles WHERE role_id = ?) > 1)`,
+        )
+          .bind(userId, role.id, parsed.data.revoke_role, role.id)
+          .run();
+        if (removed.meta.changes === 0 && parsed.data.revoke_role === 'super_admin') {
+          const has = await env.DB.prepare('SELECT 1 FROM user_roles WHERE user_id = ? AND role_id = ?')
+            .bind(userId, role.id)
+            .first();
+          if (has) return error('There must always be at least one Super Admin', 409);
+        }
       }
     }
   }

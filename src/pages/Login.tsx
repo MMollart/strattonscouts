@@ -45,7 +45,7 @@ export default function Login() {
         <button className="btn-primary w-full" disabled={submitting}>{submitting ? 'Logging in…' : 'Log in'}</button>
         <div className="flex justify-between text-sm">
           <Link to="/forgot-password" className="font-bold text-scout-purple">Forgot password?</Link>
-          <Link to="/register" className="font-bold text-scout-purple">Create account</Link>
+          <Link to="/register" state={{ from }} className="font-bold text-scout-purple">Create account</Link>
         </div>
       </form>
     </div>

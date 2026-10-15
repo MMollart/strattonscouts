@@ -2,6 +2,7 @@ import type { Env } from '../../../_lib/http';
 import { error, json, now } from '../../../_lib/http';
 import { getAuthUser, isAdmin } from '../../../_lib/auth';
 import { resourceUpsertSchema } from '@shared/validation';
+import { syncMandatoryConflicts } from '../../../_lib/conflicts';
 
 // Admin: update a resource (edit, enable/disable, approval, model, description).
 export const onRequestPut: PagesFunction<Env> = async ({ env, request, params }) => {
@@ -41,6 +42,9 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request, params })
       id,
     )
     .run();
+
+  // A type change (individual <-> combined) changes the mandatory conflicts.
+  await syncMandatoryConflicts(env, id);
 
   return json({ ok: true });
 };

@@ -71,7 +71,7 @@ tests/                 Vitest suites (pricing, availability, booking concurrency
    | `EMAIL_PROVIDER`       | `console` (logs emails) or a real provider e.g. `resend`       |
    | `EMAIL_API_KEY`        | Provider API key (**secret**)                                  |
    | `EMAIL_FROM`           | From address for outbound mail                                 |
-   | `DATA_ENCRYPTION_KEY`  | Key used to encrypt contact details at rest (**secret**)       |
+   | `DATA_ENCRYPTION_KEY`  | Key used to encrypt contact details at rest (**secret**; required in production, the API refuses requests without it) |
    | `BOOTSTRAP_ADMIN_TOKEN`| One-time token guarding the initial Super Admin bootstrap (**secret**) |
 
    > `.dev.vars` is git-ignored and must never be committed.
@@ -138,13 +138,23 @@ grant/revoke the Admin role to other users from the **Admin → Users** screen.
 npm test
 ```
 
-The most important suite, `tests/booking-allocation.test.ts`, drives the atomic
-booking engine through an in-memory D1 mock that serialises `batch()` calls to
-mirror D1's transaction semantics. It fires many conflicting requests
-concurrently and asserts that **exactly one** booking is ever persisted,
-guaranteeing no double bookings across the conflict matrix. The `pricing` and
-`availability` suites cover rounding rules, free pricing, and the bidirectional
-conflict/closure logic.
+The most important suite, `tests/booking-allocation.test.ts`, runs the booking
+engine against a **real D1 database** (workerd's SQLite via Miniflare) with the
+project's migrations and seed applied, so it exercises the same SQL that runs in
+production. It covers the Whole Venue and configurable conflict rules, closures,
+approval revalidation, status-change races, and double-booking prevention:
+many conflicting requests fired concurrently, plus a request that is held
+between its checks and its write while a competing booking completes. In every
+case exactly one booking is accepted.
+
+How double bookings are prevented: the booking row is written by a single
+`INSERT ... SELECT ... WHERE NOT EXISTS (conflicting booking) AND NOT EXISTS
+(closure)` statement, which D1 executes atomically, so a check can never be
+overtaken by a competing write.
+
+The `pricing`, `availability` and `londonTime` suites cover rounding rules, free
+pricing, nights counted by UK calendar date, the conflict matrix, and UK
+(GMT/BST) time conversion.
 
 ## Deployment (Cloudflare Pages)
 

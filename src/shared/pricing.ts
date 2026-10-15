@@ -23,10 +23,25 @@ export function billableHours(startsAt: string, endsAt: string): number {
   return Math.max(1, Math.ceil(ms / MS_PER_HOUR));
 }
 
-/** Number of nights, rounded up, between two instants (min 1). */
+const londonDate = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/London',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** Days since the epoch of the UK calendar date an instant falls on. */
+function londonDayNumber(instant: string): number {
+  return Date.parse(`${londonDate.format(new Date(instant))}T00:00:00Z`) / MS_PER_DAY;
+}
+
+/**
+ * Number of nights a stay covers: the number of UK calendar dates crossed
+ * between arrival and departure, so Friday 14:00 to Sunday 16:00 is two
+ * nights whatever the arrival and departure times (min 1).
+ */
 export function billableNights(startsAt: string, endsAt: string): number {
-  const ms = new Date(endsAt).getTime() - new Date(startsAt).getTime();
-  return Math.max(1, Math.ceil(ms / MS_PER_DAY));
+  return Math.max(1, londonDayNumber(endsAt) - londonDayNumber(startsAt));
 }
 
 /**

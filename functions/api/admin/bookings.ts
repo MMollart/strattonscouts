@@ -1,6 +1,7 @@
 import type { Env } from '../../_lib/http';
 import { error, json } from '../../_lib/http';
 import { getAuthUser, isAdmin } from '../../_lib/auth';
+import { decryptAtRest } from '../../_lib/crypto';
 
 // Admin: list/search/filter bookings including customer contact information.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
@@ -25,11 +26,20 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 
   const rows = await env.DB.prepare(
     `SELECT b.id, b.reference, b.status, b.starts_at, b.ends_at, b.total_amount_pence,
-            r.name AS resource_name, u.full_name AS customer_name, u.email AS customer_email
+            r.name AS resource_name, u.full_name AS customer_name, u.email AS customer_email,
+            u.phone_encrypted AS phone_encrypted
      FROM bookings b JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id
      ${where} ORDER BY b.starts_at DESC LIMIT 200`,
   )
     .bind(...binds)
-    .all();
-  return json(rows.results);
+    .all<{ phone_encrypted: string | null } & Record<string, unknown>>();
+
+  const key = env.DATA_ENCRYPTION_KEY ?? '';
+  const results = await Promise.all(
+    rows.results.map(async ({ phone_encrypted, ...row }) => ({
+      ...row,
+      customer_phone: await decryptAtRest(phone_encrypted, key),
+    })),
+  );
+  return json(results);
 };

@@ -203,7 +203,7 @@ CREATE TABLE email_events (
   template      TEXT NOT NULL,
   -- idempotency key prevents duplicate sends on retry
   dedupe_key    TEXT UNIQUE,
-  status        TEXT NOT NULL,   -- sent | failed
+  status        TEXT NOT NULL,   -- sending | sent | failed
   error         TEXT,
   created_at    TEXT NOT NULL,
   FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE SET NULL

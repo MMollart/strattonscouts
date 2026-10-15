@@ -2,6 +2,7 @@ import type { Env } from '../../_lib/http';
 import { error, json, newId, now } from '../../_lib/http';
 import { getAuthUser, isAdmin } from '../../_lib/auth';
 import { resourceUpsertSchema } from '@shared/validation';
+import { syncMandatoryConflicts } from '../../_lib/conflicts';
 
 // Admin: list all resources (including inactive).
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
@@ -57,12 +58,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     )
     .run();
 
-  // Mandatory self-conflict for the new resource.
-  await env.DB.prepare(
-    'INSERT INTO resource_conflicts (id, resource_id, conflicts_with_id, is_mandatory, created_at) VALUES (?, ?, ?, 1, ?)',
-  )
-    .bind(newId('rc'), id, id, ts)
-    .run();
+  // Self-conflict, plus Whole Venue (combined resource) relationships.
+  await syncMandatoryConflicts(env, id);
 
   return json({ id }, 201);
 };

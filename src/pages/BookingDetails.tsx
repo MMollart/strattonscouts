@@ -5,6 +5,7 @@ import { api, ApiError } from '../lib/api';
 import { Spinner, ErrorState, StatusBadge } from '../components/ui';
 import { formatGBP } from '@shared/pricing';
 import { useAuth } from '../lib/auth';
+import { formatLondon } from '@shared/londonTime';
 
 interface BookingDetail {
   id: string;
@@ -22,7 +23,7 @@ interface BookingDetail {
 }
 
 function fmt(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'short' });
+  return formatLondon(iso, { dateStyle: 'full', timeStyle: 'short' });
 }
 
 export default function BookingDetails() {

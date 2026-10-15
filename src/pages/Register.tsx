@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/useApi';
 import { useAuth, type SessionUser } from '../lib/auth';
@@ -8,6 +8,8 @@ interface Category { id: string; name: string; label: string; }
 
 export default function Register() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from ?? '/my-bookings';
   const { setUser } = useAuth();
   const { data: categories } = useApi<Category[]>('/categories');
   const [form, setForm] = useState({ full_name: '', email: '', phone: '', password: '', category: 'scouts' });
@@ -21,7 +23,7 @@ export default function Register() {
     try {
       const user = await api.post<SessionUser>('/auth/register', form);
       setUser(user);
-      navigate('/my-bookings');
+      navigate(from);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Registration failed');
     } finally {

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useApi } from '../../lib/useApi';
 import { Spinner, ErrorState, StatusBadge } from '../../components/ui';
+import { formatLondon } from '@shared/londonTime';
 
 interface Dashboard {
   upcoming_bookings: number;
@@ -48,7 +49,7 @@ export default function AdminDashboard() {
           <Link key={b.id} to={`/bookings/${b.id}`} className="card flex items-center justify-between py-3 hover:shadow-md">
             <div>
               <p className="font-bold">{b.resource_name}</p>
-              <p className="text-xs text-gray-500">Ref {b.reference} · {new Date(b.starts_at).toLocaleDateString('en-GB')}</p>
+              <p className="text-xs text-gray-500">Ref {b.reference} · {formatLondon(b.starts_at, { dateStyle: 'medium' })}</p>
             </div>
             <StatusBadge status={b.status} />
           </Link>

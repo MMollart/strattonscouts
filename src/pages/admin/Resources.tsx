@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { Spinner, ErrorState, EmptyState } from '../../components/ui';
+import { BookingWindowFields, type BookingWindow, windowToIso } from '../../components/BookingWindowFields';
+import { formatLondon, londonToday } from '@shared/londonTime';
 
 interface ResourceRow {
   id: string;
@@ -59,6 +61,8 @@ export default function AdminResources() {
           </div>
         ))}
       </div>
+
+      <ClosuresPanel resources={rows} />
 
       {editing && (
         <ResourceEditor
@@ -170,5 +174,120 @@ function ResourceEditor({ draft, onClose, onSaved }: { draft: Draft; onClose: ()
         </div>
       </form>
     </div>
+  );
+}
+
+interface ClosureRow {
+  id: string;
+  resource_id: string;
+  starts_at: string;
+  ends_at: string;
+  reason: string | null;
+}
+
+function ClosuresPanel({ resources }: { resources: ResourceRow[] }) {
+  const [closures, setClosures] = useState<ClosureRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [resourceId, setResourceId] = useState('');
+  const [win, setWin] = useState<BookingWindow>(() => {
+    const today = londonToday();
+    return { startDate: today, startTime: '00:00', endDate: today, endTime: '23:59' };
+  });
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function load() {
+    try {
+      setClosures(await api.get<ClosureRow[]>('/admin/closures'));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not load closures');
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  useEffect(() => {
+    if (!resourceId && resources.length) setResourceId(resources[0].id);
+  }, [resources, resourceId]);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    const iso = windowToIso(win);
+    if (!iso) {
+      setError('The end must be after the start');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await api.post('/admin/closures', {
+        resource_id: resourceId,
+        starts_at: iso.startsAt,
+        ends_at: iso.endsAt,
+        reason: reason.trim() || undefined,
+      });
+      setReason('');
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not add closure');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(id: string) {
+    if (!confirm('Remove this closure? The period will become bookable again.')) return;
+    try {
+      await api.del('/admin/closures', { id });
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not remove closure');
+    }
+  }
+
+  const nameOf = (id: string) => resources.find((r) => r.id === id)?.name ?? 'Unknown resource';
+  const upcoming = closures?.filter((c) => c.ends_at > new Date().toISOString()) ?? [];
+
+  return (
+    <section className="mt-10" aria-labelledby="closures-heading">
+      <h2 id="closures-heading" className="text-2xl">Closed periods</h2>
+      <p className="mt-1 text-sm text-gray-600">
+        Block out times when a resource cannot be booked. Closing the Whole Venue closes everything; closing a single
+        space also makes the Whole Venue unavailable. Existing bookings are not changed.
+      </p>
+
+      <form className="card mt-4 space-y-4" onSubmit={add}>
+        <div>
+          <label className="label" htmlFor="cl-resource">Resource</label>
+          <select id="cl-resource" className="input" value={resourceId} onChange={(e) => setResourceId(e.target.value)}>
+            {resources.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </div>
+        <BookingWindowFields value={win} onChange={setWin} idPrefix="cl" />
+        <div>
+          <label className="label" htmlFor="cl-reason">Reason (optional, not shown to customers)</label>
+          <input id="cl-reason" className="input" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
+        </div>
+        {error && <ErrorState message={error} />}
+        <button className="btn-primary" disabled={saving || !resourceId}>{saving ? 'Adding…' : 'Add closure'}</button>
+      </form>
+
+      <div className="mt-4 space-y-2">
+        {closures === null && !error && <Spinner />}
+        {closures && upcoming.length === 0 && <EmptyState title="No upcoming closures" />}
+        {upcoming.map((c) => (
+          <div key={c.id} className="card flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="font-black">{nameOf(c.resource_id)}</p>
+              <p className="text-sm text-gray-600">{formatLondon(c.starts_at)} to {formatLondon(c.ends_at)}</p>
+              {c.reason && <p className="text-xs text-gray-500">{c.reason}</p>}
+            </div>
+            <button type="button" className="btn-secondary" onClick={() => remove(c.id)}>Remove</button>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

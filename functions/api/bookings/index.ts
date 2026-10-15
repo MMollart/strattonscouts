@@ -3,7 +3,7 @@ import { error, json } from '../../_lib/http';
 import { getAuthUser, isAdmin } from '../../_lib/auth';
 import { createBookingSchema } from '@shared/validation';
 import { createBookingAtomic } from '../../_lib/booking';
-import { sendEmail } from '../../_lib/email';
+import { bookingTimeParams, sendEmail } from '../../_lib/email';
 import { formatGBP } from '@shared/pricing';
 
 // List the authenticated customer's own bookings.
@@ -66,7 +66,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     .first<{ email: string; full_name: string; resource_name: string }>();
 
   if (details) {
-    const start = new Date(parsed.data.starts_at);
     await sendEmail(env, {
       to: details.email,
       bookingId: result.bookingId,
@@ -76,9 +75,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
         customer_name: details.full_name,
         booking_reference: result.reference,
         resource_name: details.resource_name,
-        booking_date: start.toISOString().slice(0, 10),
-        booking_start_time: start.toISOString().slice(11, 16),
-        booking_end_time: new Date(parsed.data.ends_at).toISOString().slice(11, 16),
+        ...bookingTimeParams(result.startsAt, result.endsAt),
         booking_cost: formatGBP(result.totalPence),
         booking_status: result.status,
       },

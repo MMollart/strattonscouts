@@ -3,6 +3,7 @@ import { useApi } from '../lib/useApi';
 import { Spinner, ErrorState } from '../components/ui';
 import { formatGBP } from '@shared/pricing';
 import { useAuth } from '../lib/auth';
+import AvailabilityCalendar from '../components/AvailabilityCalendar';
 
 interface ResourceDetail {
   id: string;
@@ -57,7 +58,6 @@ export default function ResourceDetails() {
         </ul>
 
         <div className="mt-8 flex gap-4">
-          <Link to={`/availability?resource=${data.slug}`} className="btn-secondary">Check availability</Link>
           {user ? (
             <Link to={`/book/${data.slug}`} className="btn-primary">Book now</Link>
           ) : (
@@ -65,6 +65,12 @@ export default function ResourceDetails() {
           )}
         </div>
       </div>
+      <section className="lg:col-span-2" aria-labelledby="availability-heading">
+        <h2 id="availability-heading" className="text-xl">Availability</h2>
+        <div className="mt-3">
+          <AvailabilityCalendar resourceId={data.id} resourceSlug={data.slug} resourceName={data.name} />
+        </div>
+      </section>
     </div>
   );
 }

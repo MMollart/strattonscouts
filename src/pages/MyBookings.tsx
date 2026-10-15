@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../lib/useApi';
 import { Spinner, EmptyState, ErrorState, StatusBadge } from '../components/ui';
 import { formatGBP } from '@shared/pricing';
+import { formatLondon, toLondon } from '@shared/londonTime';
 
 interface BookingRow {
   id: string;
@@ -14,11 +15,12 @@ interface BookingRow {
 }
 
 function formatRange(startsAt: string, endsAt: string): string {
-  const s = new Date(startsAt);
-  const e = new Date(endsAt);
-  const date = s.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-  const t = (d: Date) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  return `${date}, ${t(s)}–${t(e)}`;
+  const day = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' } as const;
+  const time = { hour: '2-digit', minute: '2-digit' } as const;
+  if (toLondon(startsAt).date === toLondon(endsAt).date) {
+    return `${formatLondon(startsAt, day)}, ${formatLondon(startsAt, time)}–${formatLondon(endsAt, time)}`;
+  }
+  return `${formatLondon(startsAt, { ...day, ...time })} to ${formatLondon(endsAt, { ...day, ...time })}`;
 }
 
 export default function MyBookings() {
