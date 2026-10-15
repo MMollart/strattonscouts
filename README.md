@@ -89,8 +89,10 @@ tests/                 Vitest suites (pricing, availability, booking concurrency
 
    The seed creates the three pricing categories (Scouts / Community / Public),
    the six resources (Whole Venue, Small Hall, Main Hall, Kitchen, Event Field,
-   Camping), illustrative per-category prices, and the mandatory conflict matrix
-   (self-conflicts plus the Whole Venue relationships).
+   Camping), illustrative prices, and the mandatory conflict matrix
+   (self-conflicts plus the Whole Venue relationships). Migration 0014 turns
+   those prices into one full price per resource (the public price) and a
+   discount per pricing category; see docs/release-2.md.
 
 4. **Run the frontend dev server**
 

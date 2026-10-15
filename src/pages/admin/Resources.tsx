@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { needsShrinking, shrinkImage, ShrinkError } from '../../lib/shrinkImage';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
@@ -137,13 +138,22 @@ function ResourceEditor({ draft, onClose, onSaved }: { draft: Draft; onClose: ()
     const file = fileRef.current?.files?.[0];
     if (!file || !form.id) return;
     setUploadMsg(null);
-    const fd = new FormData();
-    fd.append('file', file);
     try {
+      let toSend = file;
+      if (needsShrinking(file)) {
+        setUploadMsg('Shrinking image…');
+        toSend = await shrinkImage(file);
+      }
+      const fd = new FormData();
+      fd.append('file', toSend);
       await api.upload(`/admin/resources/${form.id}/image`, fd);
-      setUploadMsg('Image uploaded.');
+      setUploadMsg(
+        toSend === file
+          ? 'Image uploaded.'
+          : `Image uploaded, shrunk from ${(file.size / 1048576).toFixed(1)} MB to ${(toSend.size / 1048576).toFixed(1)} MB.`,
+      );
     } catch (err) {
-      setUploadMsg(err instanceof ApiError ? err.message : 'Upload failed');
+      setUploadMsg(err instanceof ApiError || err instanceof ShrinkError ? err.message : 'Upload failed');
     }
   }
 
@@ -200,7 +210,8 @@ function ResourceEditor({ draft, onClose, onSaved }: { draft: Draft; onClose: ()
         {form.id && (
           <div className="rounded-xl bg-scout-off-white p-3">
             <label className="label" htmlFor="r-image">Primary image</label>
-            <input id="r-image" ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className="text-sm" />
+            <input id="r-image" ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" className="text-sm" />
+            <p className="mt-1 text-xs text-gray-500">JPEG, PNG, WebP or iPhone (HEIC) photos. Images over 5 MB are shrunk automatically before upload.</p>
             <button type="button" className="btn-secondary mt-2" onClick={upload}>Upload image</button>
             {uploadMsg && <p className="mt-2 text-sm">{uploadMsg}</p>}
           </div>

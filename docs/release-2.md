@@ -19,6 +19,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | *(none)* | FR09 Admin calendar (reads existing tables) |
 | `0012_assets.sql` | FR07 Physical asset management |
 | `0013_booking_groups.sql` | Several resources in one booking |
+| `0014_base_prices.sql` | One full (public) price per resource, with a discount per price group |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -513,3 +514,39 @@ Resources that include each other (a hall and the Whole Venue) cannot be
 combined. The customer gets one email per outcome (confirmed, awaiting
 approval, provisional) naming every resource it covers, rather than one
 email per resource. Recurring bookings remain single-resource.
+
+## One full price per resource, with group discounts
+
+**Before.** Admins entered a separate price for every resource and price
+group, so a price change meant editing up to three rows per resource.
+
+**Now.** Each resource has one full price (`base_rates`: charging model,
+amount, effective from/to, active), which the general public pays. Each
+pricing category has a percentage discount off it
+(`pricing_categories.discount_bp`, in basis points, 0 to 10000): 0% pays
+full price, 25% pays a quarter less, 100% is free. The pricing engine takes
+the customer's (or organisation's) group discount off the full price,
+rounded to the penny, before the separate dated discounts and organisation
+arrangements, which work as before. Admin → Pricing → Prices sets the full
+price and previews what each group pays; Admin → Pricing → Categories sets
+each group's discount.
+
+**Migration 0014.** The full price is the price of the highest-ordered
+category that priced each resource (General Public), so public prices are
+unchanged. Each other category's discount is 100% less the average of its
+old price divided by the public price, over the resources where both were
+in force with the same charging model, rounded to a whole percent. With
+the seed prices that gives Scouts 58% off and Community 32% off, so some
+Scouts and Community prices move a little (Scouts Main Hall was £10.00/h,
+now £10.50/h; Scouts Small Hall was £5.00/h, now £6.30/h). Existing
+bookings keep the price agreed when they were made. `pricing_rates` is
+kept but no longer read.
+
+## Shrinking large images on upload
+
+Images over 5 MB (and any HEIC/HEIF photo) are resized in the browser to at
+most 2560 px on the long edge and recompressed (JPEG, or WebP for PNG/WebP
+so transparency survives), stepping down in size and quality until they
+fit under 5 MB. The server limit is unchanged. Limits: HEIC/HEIF photos can
+only be read by Safari, so other browsers ask for a JPEG, PNG or WebP
+instead; an animated image that has to be shrunk keeps only its first frame.

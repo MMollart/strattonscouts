@@ -53,7 +53,7 @@ describe('booking allocation', () => {
     const r = await book('u1', 'res_main');
     expect(r).toMatchObject({ ok: true, status: 'confirmed', totalPence: 2000 });
     const publicPrice = await book('u2', 'res_small');
-    expect(publicPrice).toMatchObject({ ok: true, totalPence: 3000 });
+    expect(publicPrice).toMatchObject({ ok: true, totalPence: 2000 }); // full price 1000/h for public
   });
 
   it('enters Pending Approval and reserves the resource (AC14, AC15)', async () => {
@@ -155,7 +155,7 @@ describe('booking allocation', () => {
 
   it('keeps the agreed price when pricing changes later (AC19)', async () => {
     const r = await book('u1', 'res_main');
-    await db.prepare("UPDATE pricing_rates SET amount_pence = 9999 WHERE resource_id = 'res_main'").run();
+    await db.prepare("UPDATE base_rates SET amount_pence = 9999 WHERE resource_id = 'res_main'").run();
     const row = await db.prepare('SELECT total_amount_pence FROM bookings WHERE id = ?').bind(r.ok && r.bookingId).first<{ total_amount_pence: number }>();
     expect(row?.total_amount_pence).toBe(2000);
   });
@@ -247,7 +247,7 @@ describe('mandatory conflicts for new resources', () => {
     const ts = new Date().toISOString();
     await db.batch([
       db.prepare("INSERT INTO resources (id, name, slug, description, resource_type, is_active, requires_approval, pricing_model, created_at, updated_at) VALUES ('res_new', 'Store', 'store', '', 'individual', 1, 0, 'hourly', ?, ?)").bind(ts, ts),
-      db.prepare("INSERT INTO pricing_rates (id, resource_id, category_id, pricing_model, amount_pence, effective_from, created_at, updated_at) VALUES ('p_new', 'res_new', 'cat_scouts', 'hourly', 100, '1970-01-01T00:00:00.000Z', ?, ?)").bind(ts, ts),
+      db.prepare("INSERT INTO base_rates (id, resource_id, pricing_model, amount_pence, effective_from, created_at, updated_at) VALUES ('p_new', 'res_new', 'hourly', 100, '1970-01-01T00:00:00.000Z', ?, ?)").bind(ts, ts),
     ]);
     await syncMandatoryConflicts(env, 'res_new');
 
