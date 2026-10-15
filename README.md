@@ -160,7 +160,10 @@ pricing, nights counted by UK calendar date, the conflict matrix, and UK
 
 Development and production use **isolated** D1 databases and R2 buckets.
 
-1. **Create the Cloudflare resources** (once):
+1. **Cloudflare resources** (already created for this project; recreate only if
+   starting a fresh account): D1 `strattonscouts-dev` / `strattonscouts-prod` and
+   R2 `strattonscouts-resources-dev` / `strattonscouts-resources-prod`. The D1
+   IDs in `wrangler.toml` are the real ones. To recreate:
 
    ```bash
    wrangler d1 create strattonscouts-dev
@@ -169,15 +172,17 @@ Development and production use **isolated** D1 databases and R2 buckets.
    wrangler r2 bucket create strattonscouts-resources-prod
    ```
 
-   Copy the generated `database_id` values into `wrangler.toml` (replacing the
-   placeholder IDs for the default and `[env.production]` bindings).
+   then copy the new `database_id` values into `wrangler.toml`.
 
-2. **Apply migrations to production**:
+2. **Apply migrations to production.** The seed data (categories, roles, the six
+   resources and their illustrative prices) is migration `0002_seed.sql`, so one
+   command applies everything:
 
    ```bash
    npm run db:migrate:remote
-   wrangler d1 execute strattonscouts-prod --remote --file=./migrations/0002_seed.sql
    ```
+
+   Edit the seed prices in the admin portal afterwards; they are placeholders.
 
 3. **Set production secrets** (never stored in the repo):
 
