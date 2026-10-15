@@ -60,3 +60,30 @@ export function blockedMessage(kind: 'booked' | 'closed', by: BlockedBy | undefi
     ? `${by.name} ${what} at this time, and it includes this resource.`
     : `${by.name} ${what} at this time, and it is part of this resource.`;
 }
+
+/**
+ * Resources that have something beneath them (Whole Venue, Indoor), in tree
+ * order with their depth, for a "show resources in" filter.
+ */
+export function parentOptions<T extends HierarchyNode>(nodes: T[]): { node: T; depth: number }[] {
+  const ids = new Set(nodes.map((n) => n.id));
+  const hasChildren = new Set(nodes.map((n) => n.parent_id).filter((p): p is string => !!p && ids.has(p)));
+  const out: { node: T; depth: number }[] = [];
+  const visit = (parentId: string | null, depth: number) => {
+    for (const node of nodes) {
+      const parent = node.parent_id && ids.has(node.parent_id) ? node.parent_id : null;
+      if (parent !== parentId || out.some((o) => o.node.id === node.id)) continue;
+      if (hasChildren.has(node.id)) {
+        out.push({ node, depth });
+        visit(node.id, depth + 1);
+      }
+    }
+  };
+  visit(null, 0);
+  return out;
+}
+
+/** True when `id` is `parentId` itself or anywhere beneath it. */
+export function isWithin(id: string, parentId: string, ancestorsOf: (id: string) => string[]): boolean {
+  return id === parentId || ancestorsOf(id).includes(parentId);
+}

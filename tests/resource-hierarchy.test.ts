@@ -8,7 +8,7 @@ import * as availabilityApi from '../functions/api/availability';
 import * as resourcesApi from '../functions/api/resources/index';
 import * as adminResourcesApi from '../functions/api/admin/resources';
 import * as adminResourceApi from '../functions/api/admin/resources/[id]';
-import { ancestorIds, blockedMessage, hierarchyRelation, wouldCreateLoop } from '@shared/hierarchy';
+import { ancestorIds, blockedMessage, hierarchyRelation, isWithin, parentOptions, wouldCreateLoop } from '@shared/hierarchy';
 
 /**
  * The resource hierarchy from the feature request:
@@ -235,6 +235,16 @@ describe('hierarchy helpers', () => {
     expect(wouldCreateLoop('whole', 'main', nodes)).toBe(true);
     expect(wouldCreateLoop('main', 'main', nodes)).toBe(true);
     expect(wouldCreateLoop('small', 'main', nodes)).toBe(false);
+  });
+
+  it('offers each group with something beneath it as a filter, in tree order', () => {
+    const withField = [...nodes, { id: 'outdoor', parent_id: 'whole' }, { id: 'field', parent_id: 'outdoor' }];
+    expect(parentOptions(withField).map((o) => [o.node.id, o.depth])).toEqual([['whole', 0], ['indoor', 1], ['outdoor', 1]]);
+  });
+
+  it('filters a group to itself and everything beneath it', () => {
+    expect(nodes.filter((n) => isWithin(n.id, 'indoor', ancestorsOf)).map((n) => n.id)).toEqual(['indoor', 'main', 'small']);
+    expect(nodes.filter((n) => isWithin(n.id, 'whole', ancestorsOf))).toHaveLength(4);
   });
 
   it('explains the cause', () => {
