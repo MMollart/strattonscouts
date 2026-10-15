@@ -6,7 +6,7 @@ import { loadAccess } from '../functions/_lib/auth';
 import { setAdminRole } from '../functions/_lib/admins';
 import * as adminBookings from '../functions/api/admin/bookings';
 import * as approve from '../functions/api/admin/bookings/[id]';
-import * as pricing from '../functions/api/admin/resources/[id]/pricing';
+import * as pricing from '../functions/api/admin/pricing/rates/index';
 import * as admins from '../functions/api/admin/admins';
 import * as adminRole from '../functions/api/admin/admins/[id]';
 import * as settings from '../functions/api/admin/settings';
@@ -54,13 +54,13 @@ describe('role permissions (FR08)', () => {
     expect((await call(adminBookings.onRequestGet, { env, cookie })).status).toBe(200);
     expect((await call(approve.onRequestPost, { env, cookie, params: { id: 'x' }, body: { decision: 'approve' } })).status).toBe(403);
     expect((await call(closures.onRequestPost, { env, cookie, body: {} })).status).toBe(403);
-    expect((await call(pricing.onRequestPut, { env, cookie, params: { id: 'res_main' }, body: {} })).status).toBe(403);
+    expect((await call(pricing.onRequestPost, { env, cookie, body: {} })).status).toBe(403);
   });
 
   it('lets Booking Admins run bookings but not pricing, administrators or settings', async () => {
     const cookie = await sessionFor(env, 'booker');
     expect((await call(adminBookings.onRequestGet, { env, cookie })).status).toBe(200);
-    expect((await call(pricing.onRequestPut, { env, cookie, params: { id: 'res_main' }, body: { category_id: 'cat_scouts', amount_pence: 1 } })).status).toBe(403);
+    expect((await call(pricing.onRequestPost, { env, cookie, body: { resource_id: 'res_main', category_id: 'cat_scouts', pricing_model: 'hourly', amount_pence: 1, effective_from: '2026-01-01T00:00:00Z' } })).status).toBe(403);
     expect((await call(admins.onRequestGet, { env, cookie })).status).toBe(403);
     expect((await call(adminRole.onRequestPut, { env, cookie, method: 'PUT', params: { id: 'customer' }, body: { role: 'super_admin' } })).status).toBe(403);
     expect((await call(settings.onRequestGet, { env, cookie })).status).toBe(403);

@@ -6,8 +6,9 @@ import {
   canonicalIso,
   closureBinds,
 } from './availability-sql';
-import { calculateTotalPence } from '@shared/pricing';
-import type { BookingStatus, PricingModel } from '@shared/types';
+import { quotePrice } from './pricing-engine';
+import type { BookingStatus } from '@shared/types';
+import type { PriceBreakdown } from '@shared/pricing';
 
 export interface CreateBookingParams {
   env: Env;
@@ -20,6 +21,12 @@ export interface CreateBookingParams {
   organisationId?: string | null;
 }
 
+export type CreateBookingFailure = {
+  ok: false;
+  code: 'resource_not_found' | 'inactive' | 'closure' | 'conflict' | 'no_price';
+  message: string;
+};
+
 export type CreateBookingResult =
   | {
       ok: true;
@@ -29,117 +36,161 @@ export type CreateBookingResult =
       totalPence: number;
       startsAt: string;
       endsAt: string;
+      price: PriceBreakdown;
     }
-  | { ok: false; code: 'resource_not_found' | 'inactive' | 'closure' | 'conflict' | 'no_price'; message: string };
+  | CreateBookingFailure;
+
+/** A fully resolved booking ready to be written. */
+export interface BookingDraft {
+  id: string;
+  reference: string;
+  userId: string;
+  resourceId: string;
+  startsAt: string;
+  endsAt: string;
+  status: BookingStatus;
+  categoryId: string;
+  price: PriceBreakdown;
+  organisationId: string | null;
+  actorId: string;
+  eventType: string;
+}
 
 /**
- * Atomically create a booking.
- *
- * The booking row is written by a single `INSERT ... SELECT ... WHERE NOT
- * EXISTS (conflict) AND NOT EXISTS (closure)` statement. D1 executes each
- * statement atomically against a single SQLite writer, so the availability
- * check and the write cannot be interleaved with a competing request: of two
- * near-simultaneous conflicting submissions, exactly one inserts a row and the
- * other inserts nothing. The allocation and event rows are inserted in the same
- * batch (transaction) and only if the booking row exists.
+ * Statements that write one booking atomically. The booking row is inserted by
+ * a single `INSERT ... SELECT ... WHERE NOT EXISTS (conflict) AND NOT EXISTS
+ * (closure)`: D1 executes each statement atomically against a single SQLite
+ * writer, so the availability check and the write cannot be interleaved with
+ * a competing request. The allocation and event rows are only inserted if the
+ * booking row exists. Run them in one batch (a transaction).
  */
-export async function createBookingAtomic(
+export function bookingInsertStatements(env: Env, d: BookingDraft): D1PreparedStatement[] {
+  const ts = now();
+  const insertBooking = env.DB.prepare(
+    `INSERT INTO bookings (id, reference, user_id, resource_id, starts_at, ends_at, status, category_id, pricing_model,
+                           unit_price_pence, total_amount_pence, approved_by, cancelled_by, created_at, updated_at,
+                           organisation_id, created_by, base_amount_pence, discount_pence, discount_label,
+                           pricing_rate_id, pricing_discount_id, price_breakdown)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+     WHERE NOT EXISTS (${CONFLICTING_BOOKING_SQL})
+       AND NOT EXISTS (${OVERLAPPING_CLOSURE_SQL})`,
+  ).bind(
+    d.id,
+    d.reference,
+    d.userId,
+    d.resourceId,
+    d.startsAt,
+    d.endsAt,
+    d.status,
+    d.categoryId,
+    d.price.pricing_model,
+    d.price.unit_price_pence,
+    d.price.total_pence,
+    ts,
+    ts,
+    d.organisationId,
+    d.actorId,
+    d.price.base_amount_pence,
+    d.price.discount_pence,
+    d.price.discount_label,
+    d.price.pricing_rate_id,
+    d.price.pricing_discount_id,
+    JSON.stringify(d.price),
+    d.resourceId,
+    d.resourceId,
+    d.resourceId,
+    d.endsAt,
+    d.startsAt,
+    d.id,
+    ...closureBinds(d.resourceId),
+    d.endsAt,
+    d.startsAt,
+  );
+
+  const insertAllocation = env.DB.prepare(
+    'INSERT INTO booking_resources (booking_id, resource_id) SELECT ?, ? WHERE EXISTS (SELECT 1 FROM bookings WHERE id = ?)',
+  ).bind(d.id, d.resourceId, d.id);
+
+  const insertEvent = env.DB.prepare(
+    `INSERT INTO booking_events (id, booking_id, event_type, actor_id, detail, created_at)
+     SELECT ?, ?, ?, ?, NULL, ? WHERE EXISTS (SELECT 1 FROM bookings WHERE id = ?)`,
+  ).bind(newId('bev'), d.id, d.eventType, d.actorId, ts, d.id);
+
+  return [insertBooking, insertAllocation, insertEvent];
+}
+
+/** Resource checks and server-side price for a requested booking. */
+export async function prepareBooking(
   params: CreateBookingParams,
-): Promise<CreateBookingResult> {
+): Promise<{ ok: true; draft: BookingDraft; requiresApproval: boolean } | CreateBookingFailure> {
   const { env } = params;
   const startsAt = canonicalIso(params.startsAt);
   const endsAt = canonicalIso(params.endsAt);
 
-  const resource = await env.DB.prepare(
-    'SELECT id, is_active, requires_approval, pricing_model FROM resources WHERE id = ?',
-  )
+  const resource = await env.DB.prepare('SELECT id, is_active, requires_approval FROM resources WHERE id = ?')
     .bind(params.resourceId)
-    .first<{ id: string; is_active: number; requires_approval: number; pricing_model: PricingModel }>();
+    .first<{ id: string; is_active: number; requires_approval: number }>();
   if (!resource) return { ok: false, code: 'resource_not_found', message: 'Resource not found' };
   if (!resource.is_active) return { ok: false, code: 'inactive', message: 'Resource is not available' };
 
-  // Customer category + price snapshot. Organisation bookings use the
-  // organisation's category.
-  const user = params.organisationId
-    ? await env.DB.prepare('SELECT pricing_category_id FROM organisations WHERE id = ?')
-        .bind(params.organisationId)
-        .first<{ pricing_category_id: string }>()
-    : await env.DB.prepare('SELECT pricing_category_id FROM users WHERE id = ?')
-        .bind(params.userId)
-        .first<{ pricing_category_id: string }>();
-  if (!user) return { ok: false, code: 'resource_not_found', message: params.organisationId ? 'Organisation not found' : 'Customer not found' };
-
-  const price = await env.DB.prepare(
-    'SELECT amount_pence, is_free FROM resource_pricing WHERE resource_id = ? AND category_id = ?',
-  )
-    .bind(params.resourceId, user.pricing_category_id)
-    .first<{ amount_pence: number; is_free: number }>();
-  if (!price) return { ok: false, code: 'no_price', message: 'No price configured for your category' };
+  const quote = await quotePrice(env, {
+    resourceId: params.resourceId,
+    userId: params.userId,
+    organisationId: params.organisationId,
+    startsAt,
+    endsAt,
+  });
+  if (!quote.ok) {
+    return quote.code === 'not_found'
+      ? { ok: false, code: 'resource_not_found', message: quote.message }
+      : { ok: false, code: 'no_price', message: 'No price configured for your category' };
+  }
 
   // Closures are checked first so the customer gets the more specific message;
-  // the atomic insert below re-checks both conditions regardless.
+  // the atomic insert re-checks both conditions regardless.
   const closure = await env.DB.prepare(OVERLAPPING_CLOSURE_SQL)
     .bind(...closureBinds(params.resourceId), endsAt, startsAt)
     .first();
   if (closure) return { ok: false, code: 'closure', message: 'Resource is unavailable for this period' };
 
-  const bookingId = newId('bk');
-  const reference = bookingReference();
   const status: BookingStatus = resource.requires_approval ? 'pending_approval' : 'confirmed';
-  const totalPence = calculateTotalPence({
-    pricingModel: resource.pricing_model,
-    unitPricePence: price.amount_pence,
-    isFree: !!price.is_free,
-    startsAt,
-    endsAt,
-  });
-  const ts = now();
+  return {
+    ok: true,
+    requiresApproval: !!resource.requires_approval,
+    draft: {
+      id: newId('bk'),
+      reference: bookingReference(),
+      userId: params.userId,
+      resourceId: params.resourceId,
+      startsAt,
+      endsAt,
+      status,
+      categoryId: quote.categoryId,
+      price: quote.breakdown,
+      organisationId: params.organisationId ?? null,
+      actorId: params.actorId,
+      eventType: status === 'confirmed' ? 'confirmed' : 'created',
+    },
+  };
+}
 
-  const insertBooking = env.DB.prepare(
-    `INSERT INTO bookings (id, reference, user_id, resource_id, starts_at, ends_at, status, category_id, pricing_model, unit_price_pence, total_amount_pence, approved_by, cancelled_by, created_at, updated_at, organisation_id, created_by)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?
-     WHERE NOT EXISTS (${CONFLICTING_BOOKING_SQL})
-       AND NOT EXISTS (${OVERLAPPING_CLOSURE_SQL})`,
-  ).bind(
-    bookingId,
-    reference,
-    params.userId,
-    params.resourceId,
-    startsAt,
-    endsAt,
-    status,
-    user.pricing_category_id,
-    resource.pricing_model,
-    price.amount_pence,
-    totalPence,
-    ts,
-    ts,
-    params.organisationId ?? null,
-    params.actorId,
-    params.resourceId,
-    params.resourceId,
-    params.resourceId,
-    endsAt,
-    startsAt,
-    bookingId,
-    ...closureBinds(params.resourceId),
-    endsAt,
-    startsAt,
-  );
-
-  const insertAllocation = env.DB.prepare(
-    'INSERT INTO booking_resources (booking_id, resource_id) SELECT ?, ? WHERE EXISTS (SELECT 1 FROM bookings WHERE id = ?)',
-  ).bind(bookingId, params.resourceId, bookingId);
-
-  const insertEvent = env.DB.prepare(
-    `INSERT INTO booking_events (id, booking_id, event_type, actor_id, detail, created_at)
-     SELECT ?, ?, ?, ?, NULL, ? WHERE EXISTS (SELECT 1 FROM bookings WHERE id = ?)`,
-  ).bind(newId('bev'), bookingId, status === 'confirmed' ? 'confirmed' : 'created', params.actorId, ts, bookingId);
-
-  const [bookingResult] = await env.DB.batch([insertBooking, insertAllocation, insertEvent]);
+/** Atomically create a single booking (see bookingInsertStatements). */
+export async function createBookingAtomic(params: CreateBookingParams): Promise<CreateBookingResult> {
+  const prepared = await prepareBooking(params);
+  if (!prepared.ok) return prepared;
+  const d = prepared.draft;
+  const [bookingResult] = await params.env.DB.batch(bookingInsertStatements(params.env, d));
   if (bookingResult.meta.changes !== 1) {
     return { ok: false, code: 'conflict', message: 'The requested period is no longer available' };
   }
-
-  return { ok: true, bookingId, reference, status, totalPence, startsAt, endsAt };
+  return {
+    ok: true,
+    bookingId: d.id,
+    reference: d.reference,
+    status: d.status,
+    totalPence: d.price.total_pence,
+    startsAt: d.startsAt,
+    endsAt: d.endsAt,
+    price: d.price,
+  };
 }

@@ -12,7 +12,7 @@ interface ResourceDetail {
   description: string;
   pricing_model: string;
   requires_approval: boolean;
-  prices: { category: string; label: string; amount_pence: number; is_free: boolean }[];
+  prices: { category: string; label: string; pricing_model: string; amount_pence: number; is_free: boolean }[];
   images: { id: string; r2_key: string; is_primary: boolean }[];
 }
 
@@ -47,15 +47,16 @@ export default function ResourceDetails() {
         )}
         <p className="mt-4 whitespace-pre-line text-gray-700">{data.description}</p>
 
-        <h2 className="mt-8 text-xl">Pricing ({MODEL_LABEL[data.pricing_model]})</h2>
+        <h2 className="mt-8 text-xl">Pricing</h2>
         <ul className="mt-3 divide-y rounded-xl border">
           {data.prices.map((p) => (
             <li key={p.category} className="flex items-center justify-between px-4 py-3">
               <span>{p.label}</span>
-              <span className="font-bold">{p.is_free ? 'Free' : formatGBP(p.amount_pence)}</span>
+              <span className="font-bold">{p.is_free ? 'Free' : `${formatGBP(p.amount_pence)} ${MODEL_LABEL[p.pricing_model] ?? ''}`}</span>
             </li>
           ))}
         </ul>
+        <p className="mt-2 text-xs text-gray-500">Organisation rates and any discounts are shown in your quote when you book.</p>
 
         <div className="mt-8 flex gap-4">
           {user ? (

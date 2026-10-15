@@ -75,3 +75,142 @@ export function formatGBP(pence: number): string {
   const abs = Math.abs(pence);
   return `${sign}£${(abs / 100).toFixed(2)}`;
 }
+
+// ---------------------------------------------------------------------------
+// Release 2 pricing engine (FR02 / FR14). Pure: the API loads the applicable
+// rules and calls computePrice; the result is stored on the booking.
+// ---------------------------------------------------------------------------
+
+export type RateModel = PricingModel | 'free';
+
+export interface RateRule {
+  id: string;
+  pricing_model: RateModel;
+  amount_pence: number;
+}
+
+export interface DiscountRule {
+  id: string;
+  label: string;
+  discount_type: 'percentage' | 'fixed';
+  /** Basis points for percentage (2000 = 20%), pence for fixed. */
+  value: number;
+}
+
+/** An organisation-specific arrangement that applies to this booking (FR14). */
+export type OrganisationArrangement =
+  | { id: string; kind: 'rate'; label: string; rate: RateRule }
+  | { id: string; kind: 'free'; label: string }
+  | { id: string; kind: 'discount'; label: string; discount: DiscountRule };
+
+export type PriceSource = 'category_rate' | 'organisation_rate' | 'organisation_free' | 'organisation_discount';
+
+export interface PriceBreakdown {
+  pricing_model: RateModel;
+  unit_price_pence: number;
+  quantity: number;
+  quantity_unit: 'hour' | 'night' | 'booking';
+  base_amount_pence: number;
+  discount_pence: number;
+  discount_label: string | null;
+  total_pence: number;
+  source: PriceSource;
+  pricing_rate_id: string | null;
+  pricing_discount_id: string | null;
+  organisation_pricing_id: string | null;
+}
+
+/** Billable quantity for a pricing model. */
+export function billableQuantity(model: RateModel, startsAt: string, endsAt: string): { quantity: number; unit: PriceBreakdown['quantity_unit'] } {
+  if (model === 'hourly') return { quantity: billableHours(startsAt, endsAt), unit: 'hour' };
+  if (model === 'nightly') return { quantity: billableNights(startsAt, endsAt), unit: 'night' };
+  return { quantity: 1, unit: 'booking' };
+}
+
+/** Discount in pence for a base amount; never more than the base. */
+export function discountAmount(basePence: number, discount: DiscountRule): number {
+  const base = Math.max(0, Math.trunc(basePence));
+  const raw = discount.discount_type === 'percentage'
+    ? Math.round((base * Math.min(10_000, Math.max(0, discount.value))) / 10_000)
+    : Math.max(0, Math.trunc(discount.value));
+  return Math.min(base, raw);
+}
+
+/**
+ * Price a booking. Precedence (FR14 §12.3):
+ *  1. an organisation-specific rate (or free use) replaces the category rate;
+ *  2. otherwise an organisation-specific discount applies to the category rate;
+ *  3. otherwise the category rate, with the best eligible general discount.
+ * Only one discount ever applies, so arrangements never stack.
+ */
+export function computePrice(params: {
+  categoryRate: RateRule | null;
+  generalDiscounts: DiscountRule[];
+  arrangement: OrganisationArrangement | null;
+  startsAt: string;
+  endsAt: string;
+}): PriceBreakdown | null {
+  const { arrangement, startsAt, endsAt } = params;
+
+  const priced = (rate: RateRule, source: PriceSource, orgId: string | null): PriceBreakdown => {
+    const free = rate.pricing_model === 'free';
+    const unit = free ? 0 : Math.max(0, Math.trunc(rate.amount_pence));
+    const { quantity, unit: quantityUnit } = billableQuantity(rate.pricing_model, startsAt, endsAt);
+    const base = unit * quantity;
+    return {
+      pricing_model: rate.pricing_model,
+      unit_price_pence: unit,
+      quantity,
+      quantity_unit: quantityUnit,
+      base_amount_pence: base,
+      discount_pence: 0,
+      discount_label: null,
+      total_pence: base,
+      source,
+      pricing_rate_id: source === 'category_rate' ? rate.id : null,
+      pricing_discount_id: null,
+      organisation_pricing_id: orgId,
+    };
+  };
+
+  const withDiscount = (b: PriceBreakdown, d: DiscountRule, orgId: string | null): PriceBreakdown => {
+    const off = discountAmount(b.base_amount_pence, d);
+    return {
+      ...b,
+      discount_pence: off,
+      discount_label: d.label,
+      total_pence: b.base_amount_pence - off,
+      pricing_discount_id: orgId ? null : d.id,
+      organisation_pricing_id: orgId,
+      source: orgId ? 'organisation_discount' : b.source,
+    };
+  };
+
+  if (arrangement?.kind === 'rate') return priced(arrangement.rate, 'organisation_rate', arrangement.id);
+  if (arrangement?.kind === 'free') {
+    return priced({ id: arrangement.id, pricing_model: 'free', amount_pence: 0 }, 'organisation_free', arrangement.id);
+  }
+  if (!params.categoryRate) return null;
+  const base = priced(params.categoryRate, 'category_rate', null);
+  if (arrangement?.kind === 'discount') {
+    return { ...withDiscount(base, arrangement.discount, arrangement.id), pricing_rate_id: base.pricing_rate_id };
+  }
+  let best: PriceBreakdown = base;
+  for (const d of params.generalDiscounts) {
+    const candidate = withDiscount(base, d, null);
+    if (candidate.discount_pence > best.discount_pence) best = candidate;
+  }
+  return best;
+}
+
+export const RATE_MODEL_LABEL: Record<RateModel, string> = {
+  hourly: 'per hour',
+  nightly: 'per night',
+  fixed: 'per booking',
+  free: 'free',
+};
+
+/** Basis points as a percentage string, e.g. 2000 -> "20%", 1250 -> "12.5%". */
+export function formatPercent(bp: number): string {
+  return `${Number((bp / 100).toFixed(2))}%`;
+}

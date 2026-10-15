@@ -1,5 +1,6 @@
 import type { Env } from '../../_lib/http';
 import { error, json } from '../../_lib/http';
+import { loadCurrentPrices } from '../../_lib/public-prices';
 
 // Public: single resource detail by slug.
 export const onRequestGet: PagesFunction<Env> = async ({ env, params }) => {
@@ -12,12 +13,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, params }) => {
     .first();
   if (!r) return error('Resource not found', 404);
 
-  const prices = await env.DB.prepare(
-    `SELECT pc.name AS category, pc.label, rp.amount_pence, rp.is_free
-     FROM resource_pricing rp JOIN pricing_categories pc ON pc.id = rp.category_id WHERE rp.resource_id = ?`,
-  )
-    .bind(r.id)
-    .all<{ category: string; label: string; amount_pence: number; is_free: number }>();
+  const prices = await loadCurrentPrices(env, r.id as string);
 
   const images = await env.DB.prepare(
     'SELECT id, r2_key, is_primary FROM resource_images WHERE resource_id = ? ORDER BY is_primary DESC',
@@ -29,7 +25,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, params }) => {
     ...r,
     is_active: !!(r.is_active as number),
     requires_approval: !!(r.requires_approval as number),
-    prices: prices.results.map((p) => ({ ...p, is_free: !!p.is_free })),
+    prices: prices.map(({ resource_id: _r, ...p }) => p),
     images: images.results.map((i) => ({ ...i, is_primary: !!i.is_primary })),
   });
 };

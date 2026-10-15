@@ -9,6 +9,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | --- | --- |
 | `0003_admin_roles.sql` | FR08 Advanced admin roles & permissions |
 | `0004_organisations.sql` | FR01 Organisations, memberships & invitations |
+| `0005_pricing_engine.sql` | FR02 Advanced pricing engine |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -119,3 +120,52 @@ cancel them.
 - *Invitation link for someone who is not signed in:* the link page shows the
   organisation and a masked address; the full address is shown only to the
   signed-in recipient.
+
+## FR02 – Advanced pricing engine
+
+**Data.** `pricing_rates` replaces `resource_pricing` as the source of prices.
+A rate is (resource, category, charging model, amount, effective from/to,
+active). Charging models: per hour (rounded up), per night (UK calendar dates
+crossed), fixed per booking, and free. The migration copies every Release 1
+price into an open-ended rate, so every quote is unchanged; `resource_pricing`
+is kept but no longer read. `pricing_discounts` holds fixed (pence) and
+percentage (basis points, 2000 = 20%) discounts, optionally limited to one
+resource and/or category, with effective dates. Categories gain `is_active`
+and administrators can add new ones.
+
+**Calculation** (`functions/_lib/pricing-engine.ts`, pure core
+`computePrice` in `src/shared/pricing.ts`), always server-side:
+
+1. resource and booking window;
+2. duration in the rate's unit;
+3. customer, or the organisation when booking on its behalf;
+4. that party's pricing category;
+5. the newest active rate for the resource and category whose period covers
+   the booking start;
+6. organisation arrangement (FR14), otherwise the single best eligible
+   discount;
+7. total in integer pence;
+8. full breakdown returned.
+
+`POST /api/pricing/quote` returns that breakdown and the booking form shows it
+before submission; the booking endpoint calls the same function.
+
+**History.** Each booking stores pricing category, model, unit price, base
+amount, discount and its label, final amount, the rate and discount ids, and
+the full breakdown JSON. Release 1 bookings are backfilled (base = total,
+discount 0). Rate and discount changes never touch existing bookings.
+
+**Screens.** Admin → Pricing has tabs for Rates, Discounts, Organisation
+pricing (FR14), Categories and the Release 1 conflict matrix. Amounts are
+entered in pounds and stored in pence.
+
+### Decisions
+
+- *Effective-dated rates:* (a) add columns to `resource_pricing` (its unique
+  key allows only one price per resource and category), (b) rebuild that
+  table, (c) a new `pricing_rates` table with the old rows copied in. Chose
+  (c): non-destructive and allows several dated rates.
+- *Which date a rate's period is compared with:* the booking start (the date
+  of use), so a price list "from 1 April" applies to stays from 1 April.
+- *Several matching discounts:* only the one giving the largest saving applies;
+  discounts never stack, mirroring FR14's one-arrangement rule.

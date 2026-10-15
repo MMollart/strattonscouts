@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
+import { useQuote } from '../../lib/useQuote';
+import { PriceSummary } from '../../components/PriceSummary';
 import { Spinner, EmptyState, ErrorState, StatusBadge } from '../../components/ui';
 import { formatGBP } from '@shared/pricing';
 import { formatLondon, londonToday } from '@shared/londonTime';
@@ -195,6 +197,7 @@ function BookForCustomer({
   const [error, setError] = useState<string | null>(null);
   const iso = windowToIso(win);
   const availability = useAvailability(resourceId || undefined, iso);
+  const { quote, loading: quoting, error: quoteError } = useQuote({ resourceId: resourceId || undefined, window: customerId ? iso : null, onBehalfOfUserId: customerId || undefined });
 
   const matches = (customers ?? []).filter((c) =>
     `${c.full_name} ${c.email}`.toLowerCase().includes(filter.trim().toLowerCase()),
@@ -257,6 +260,7 @@ function BookForCustomer({
           {AVAILABILITY_MESSAGE[availability]}
         </p>
       )}
+      {customerId && <div className="rounded-xl bg-scout-off-white p-4"><PriceSummary price={quote} loading={quoting} error={quoteError} /></div>}
       <p className="text-xs text-gray-500">
         The booking is priced at the customer&apos;s category rate and follows the resource&apos;s approval setting. The customer is emailed.
       </p>

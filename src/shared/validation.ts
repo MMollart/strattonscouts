@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { ADMIN_ROLES } from './permissions';
 
-export const categoryNameSchema = z.enum(['scouts', 'community', 'public']);
+// Categories are configurable (FR02); names are validated against the database.
+export const categoryNameSchema = z.string().trim().min(1).max(40);
 export const pricingModelSchema = z.enum(['hourly', 'nightly', 'fixed']);
 
 // ISO-8601 datetime string
@@ -124,3 +125,59 @@ export const invitationResponseSchema = z.object({
 export const membershipUpdateSchema = z.object({
   role: organisationRoleSchema,
 });
+
+// ------------------------- Pricing (FR02 / FR14) --------------------------
+const optionalIso = isoDateTime.nullable().optional();
+
+function effectiveRange<T extends { effective_from: string; effective_to?: string | null }>(v: T): boolean {
+  return !v.effective_to || new Date(v.effective_to).getTime() > new Date(v.effective_from).getTime();
+}
+
+export const rateModelSchema = z.enum(['hourly', 'nightly', 'fixed', 'free']);
+
+export const pricingRateSchema = z
+  .object({
+    resource_id: z.string().min(1),
+    category_id: z.string().min(1),
+    pricing_model: rateModelSchema,
+    amount_pence: z.number().int().min(0).max(100_000_000),
+    effective_from: isoDateTime,
+    effective_to: optionalIso,
+    is_active: z.boolean().default(true),
+  })
+  .refine(effectiveRange, { message: 'Effective to must be after effective from', path: ['effective_to'] });
+
+export const discountSchema = z
+  .object({
+    name: z.string().trim().min(2).max(120),
+    discount_type: z.enum(['percentage', 'fixed']),
+    // basis points for percentage (max 100%), pence for fixed
+    value: z.number().int().min(0).max(100_000_000),
+    resource_id: z.string().min(1).nullable().optional(),
+    category_id: z.string().min(1).nullable().optional(),
+    effective_from: isoDateTime,
+    effective_to: optionalIso,
+    is_active: z.boolean().default(true),
+  })
+  .refine(effectiveRange, { message: 'Effective to must be after effective from', path: ['effective_to'] })
+  .refine((v) => v.discount_type !== 'percentage' || v.value <= 10_000, { message: 'A percentage cannot exceed 100%', path: ['value'] });
+
+export const categoryCreateSchema = z.object({
+  name: z.string().trim().regex(/^[a-z0-9_]+$/, 'Use lowercase letters, numbers and underscores').min(2).max(40),
+  label: z.string().trim().min(2).max(120),
+  sort_order: z.number().int().min(0).max(1000).default(100),
+  is_active: z.boolean().default(true),
+});
+
+export const quoteSchema = z
+  .object({
+    resource_id: z.string().min(1),
+    starts_at: isoDateTime,
+    ends_at: isoDateTime,
+    organisation_id: z.string().min(1).nullable().optional(),
+    on_behalf_of_user_id: z.string().min(1).optional(),
+  })
+  .refine((v) => new Date(v.ends_at).getTime() > new Date(v.starts_at).getTime(), {
+    message: 'End time must be after start time',
+    path: ['ends_at'],
+  });

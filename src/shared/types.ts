@@ -13,7 +13,7 @@ export type BookingStatus =
 
 export type { AdminRole as RoleName } from './permissions';
 
-export type CategoryName = 'scouts' | 'community' | 'public';
+export type CategoryName = string;
 
 export interface PricingCategory {
   id: string;

@@ -3,7 +3,6 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../lib/useApi';
 import { api, ApiError } from '../lib/api';
 import { Spinner, ErrorState } from '../components/ui';
-import { calculateTotalPence, formatGBP } from '@shared/pricing';
 import { useAuth } from '../lib/auth';
 import { londonToday, toLondon } from '@shared/londonTime';
 import {
@@ -14,6 +13,8 @@ import {
   windowToIso,
 } from '../components/BookingWindowFields';
 import type { MyOrganisation } from './Organisations';
+import { useQuote } from '../lib/useQuote';
+import { PriceSummary } from '../components/PriceSummary';
 
 interface ResourceDetail {
   id: string;
@@ -54,20 +55,10 @@ export default function BookResource() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const myCategory = categories?.find((c) => c.id === (organisation ? organisation.pricing_category_id : user?.pricing_category_id));
-  const myPrice = resource?.prices.find((p) => myCategory && p.category === myCategory.name);
   const iso = useMemo(() => windowToIso(win), [win]);
   const availability = useAvailability(resource?.id, iso);
 
-  const total = useMemo(() => {
-    if (!resource || !myPrice || !iso) return null;
-    return calculateTotalPence({
-      pricingModel: resource.pricing_model,
-      unitPricePence: myPrice.amount_pence,
-      isFree: myPrice.is_free,
-      startsAt: iso.startsAt,
-      endsAt: iso.endsAt,
-    });
-  }, [resource, myPrice, iso]);
+  const { quote, loading: quoting, error: quoteError } = useQuote({ resourceId: resource?.id, window: iso, organisationId: organisation?.id ?? null });
 
   useEffect(() => setSubmitError(null), [win]);
 
@@ -134,16 +125,15 @@ export default function BookResource() {
             <span>{organisation ? 'Organisation category' : 'Your category'}</span>
             <span className="font-bold">{myCategory?.label ?? '—'}</span>
           </div>
-          <div className="mt-2 flex items-center justify-between text-lg">
-            <span>Estimated total</span>
-            <span className="font-black text-scout-purple">{total !== null ? formatGBP(total) : '—'}</span>
+          <div className="mt-3">
+            <PriceSummary price={quote} loading={quoting} error={quoteError} />
           </div>
-          <p className="mt-1 text-xs text-gray-500">The final price is confirmed server-side when you submit.</p>
+          <p className="mt-2 text-xs text-gray-500">This is the price you will be charged; it is fixed when you submit.</p>
         </div>
 
         {submitError && <ErrorState message={submitError} />}
 
-        <button className="btn-primary w-full" onClick={submit} disabled={submitting || total === null || availability === 'conflict' || availability === 'closure' || availability === 'inactive'}>
+        <button className="btn-primary w-full" onClick={submit} disabled={submitting || !quote || availability === 'conflict' || availability === 'closure' || availability === 'inactive'}>
           {submitting ? 'Submitting…' : resource.requires_approval ? 'Request booking' : 'Confirm booking'}
         </button>
       </div>

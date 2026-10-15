@@ -22,6 +22,9 @@ interface BookingDetail {
   created_at: string;
   organisation_name: string | null;
   can_manage: boolean;
+  base_amount_pence: number | null;
+  discount_pence: number;
+  discount_label: string | null;
 }
 
 function fmt(iso: string): string {
@@ -74,6 +77,12 @@ export default function BookingDetails() {
         {data.organisation_name && <Row label="Organisation" value={data.organisation_name} />}
         {data.customer_email && <Row label="Email" value={data.customer_email} />}
         <Row label="Pricing model" value={data.pricing_model} />
+        {data.discount_pence > 0 && (
+          <>
+            <Row label="Price before discount" value={formatGBP(data.base_amount_pence ?? data.total_amount_pence)} />
+            <Row label={data.discount_label ?? 'Discount'} value={`−${formatGBP(data.discount_pence)}`} />
+          </>
+        )}
         <Row label="Total" value={formatGBP(data.total_amount_pence)} bold />
       </div>
 
