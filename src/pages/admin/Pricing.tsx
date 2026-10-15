@@ -4,15 +4,15 @@ import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
 import { Spinner, ErrorState } from '../../components/ui';
-import { formatGBP, formatPercent, RATE_MODEL_LABEL, type RateModel } from '@shared/pricing';
+import { adjustedAmount, describeAdjustment, formatGBP, formatPercent, RATE_MODEL_LABEL, type RateModel } from '@shared/pricing';
 import { formatLondon, fromLondon, londonToday } from '@shared/londonTime';
 import { poundsToPence } from '../../lib/money';
 
 interface ResourceRow { id: string; name: string; }
 interface ConflictRow { id: string; resource_id: string; conflicts_with_id: string; is_mandatory: boolean; }
-interface CategoryRow { id: string; name: string; label: string; sort_order: number; is_active: boolean; }
+interface CategoryRow { id: string; name: string; label: string; sort_order: number; is_active: boolean; price_adjustment_bp: number; }
 interface RateRow {
-  id: string; resource_id: string; category_id: string; category_label: string; pricing_model: RateModel;
+  id: string; resource_id: string; pricing_model: RateModel;
   amount_pence: number; effective_from: string; effective_to: string | null; is_active: boolean;
 }
 interface DiscountRow {
@@ -42,7 +42,7 @@ export default function AdminPricing() {
   if (!resources) return null;
 
   const tabs: [Tab, string][] = [
-    ['rates', 'Rates'],
+    ['rates', 'Base prices'],
     ['discounts', 'Discounts'],
     ['organisations', 'Organisation pricing'],
     ['categories', 'Categories'],
@@ -279,7 +279,7 @@ function RatesPanel({ resources, categories }: { resources: ResourceRow[]; categ
   const [resourceId, setResourceId] = useState(resources[0]?.id ?? '');
   const { data, loading, error, setData } = useApi<RateRow[]>(`/admin/pricing/rates?resource_id=${resourceId}`, [resourceId]);
   const fb = useFeedback();
-  const [draft, setDraft] = useState({ category_id: '', pricing_model: 'hourly' as RateModel, amount: '', from: londonToday(), to: '' });
+  const [draft, setDraft] = useState({ pricing_model: 'hourly' as RateModel, amount: '', from: londonToday(), to: '' });
   const [saving, setSaving] = useState(false);
   const canEdit = can('pricing.manage');
 
@@ -296,17 +296,16 @@ function RatesPanel({ resources, categories }: { resources: ResourceRow[]; categ
     try {
       await api.post('/admin/pricing/rates', {
         resource_id: resourceId,
-        category_id: draft.category_id || categories[0]?.id,
         pricing_model: draft.pricing_model,
         amount_pence: pence,
         effective_from: dateToIso(draft.from),
         effective_to: dateToIso(draft.to),
       });
       await reload();
-      fb.ok('Rate added.');
+      fb.ok('Base price added.');
       setDraft((d) => ({ ...d, amount: '' }));
     } catch (err) {
-      fb.fail(err, 'Could not add the rate');
+      fb.fail(err, 'Could not add the price');
     } finally {
       setSaving(false);
     }
@@ -341,20 +340,20 @@ function RatesPanel({ resources, categories }: { resources: ResourceRow[]; categ
         </select>
       </div>
       <p className="mt-3 text-xs text-gray-500">
-        For each category the newest rate whose period covers the booking start is used. A booking with no matching rate cannot be made.
+        Each resource has one base price. Every price group pays the base price adjusted by its percentage (set under Categories).
+        The newest price whose period covers the booking start is used; a resource with no price cannot be booked.
       </p>
       {loading && <Spinner />}
       {error && <ErrorState message={error} />}
       {data && (
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-sm">
-            <thead><tr className="text-left text-gray-500"><th className="p-2">Category</th><th className="p-2">Price</th><th className="p-2">Period</th><th className="p-2"></th></tr></thead>
+            <thead><tr className="text-left text-gray-500"><th className="p-2">Base price</th><th className="p-2">Period</th><th className="p-2"></th></tr></thead>
             <tbody>
-              {data.length === 0 && <tr><td className="p-2 text-gray-500" colSpan={4}>No rates yet. Customers cannot book this resource until a rate exists.</td></tr>}
+              {data.length === 0 && <tr><td className="p-2 text-gray-500" colSpan={3}>No price yet. Customers cannot book this resource until it has one.</td></tr>}
               {data.map((r) => (
                 <tr key={r.id} className={`border-t ${r.is_active ? '' : 'opacity-50'}`}>
-                  <td className="p-2 font-bold">{r.category_label}</td>
-                  <td className="p-2">{r.pricing_model === 'free' ? 'Free' : `${formatGBP(r.amount_pence)} ${RATE_MODEL_LABEL[r.pricing_model]}`}</td>
+                  <td className="p-2 font-bold">{r.pricing_model === 'free' ? 'Free' : `${formatGBP(r.amount_pence)} ${RATE_MODEL_LABEL[r.pricing_model]}`}</td>
                   <td className="p-2">{period(r.effective_from, r.effective_to)}{!r.is_active && ' (disabled)'}</td>
                   <td className="p-2 text-right">
                     {canEdit && (
@@ -368,16 +367,11 @@ function RatesPanel({ resources, categories }: { resources: ResourceRow[]; categ
               ))}
             </tbody>
           </table>
+          <GroupPrices rate={currentRate(data)} categories={categories} />
         </div>
       )}
       {canEdit && (
-        <form className="mt-6 grid gap-3 border-t pt-4 sm:grid-cols-3 lg:grid-cols-6 lg:items-end" onSubmit={add}>
-          <div>
-            <label className="label" htmlFor="rate-cat">Category</label>
-            <select id="rate-cat" className="input" value={draft.category_id || categories[0]?.id || ''} onChange={(e) => setDraft({ ...draft, category_id: e.target.value })}>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-            </select>
-          </div>
+        <form className="mt-6 grid gap-3 border-t pt-4 sm:grid-cols-3 lg:grid-cols-5 lg:items-end" onSubmit={add}>
           <div>
             <label className="label" htmlFor="rate-model">Charging</label>
             <select id="rate-model" className="input" value={draft.pricing_model} onChange={(e) => setDraft({ ...draft, pricing_model: e.target.value as RateModel })}>
@@ -399,11 +393,38 @@ function RatesPanel({ resources, categories }: { resources: ResourceRow[]; categ
             <label className="label" htmlFor="rate-to">Until (optional)</label>
             <input id="rate-to" type="date" className="input" value={draft.to} min={draft.from} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
           </div>
-          <button className="btn-primary" disabled={saving}>{saving ? 'Adding…' : 'Add rate'}</button>
+          <button className="btn-primary" disabled={saving}>{saving ? 'Adding…' : 'Add price'}</button>
         </form>
       )}
       {fb.node}
     </section>
+  );
+}
+
+/** The base price in force now: the newest active one whose period covers today. */
+function currentRate(rows: RateRow[]): RateRow | null {
+  const at = new Date().toISOString();
+  return rows.filter((r) => r.is_active && r.effective_from <= at && (!r.effective_to || r.effective_to > at)).sort((a, b) => b.effective_from.localeCompare(a.effective_from))[0] ?? null;
+}
+
+/** What each active price group pays now, from the current base price. */
+function GroupPrices({ rate, categories }: { rate: RateRow | null; categories: CategoryRow[] }) {
+  if (!rate) return null;
+  return (
+    <div className="mt-4 rounded-xl bg-scout-off-white p-3">
+      <p className="text-sm font-bold">What each price group pays now</p>
+      <ul className="mt-2 grid max-w-xl gap-1 text-sm">
+        {categories.filter((c) => c.is_active).map((c) => {
+          const free = rate.pricing_model === 'free' || c.price_adjustment_bp <= -10_000;
+          return (
+            <li key={c.id} className="flex justify-between gap-2">
+              <span>{c.label} <span className="text-gray-500">({describeAdjustment(c.price_adjustment_bp)})</span></span>
+              <span className="font-bold">{free ? 'Free' : `${formatGBP(adjustedAmount(rate.amount_pence, c.price_adjustment_bp))} ${RATE_MODEL_LABEL[rate.pricing_model]}`}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -535,26 +556,32 @@ function CategoriesPanel({ categories, reload }: { categories: CategoryRow[]; re
   const { can } = useAuth();
   const fb = useFeedback();
   const [label, setLabel] = useState('');
+  const [adjust, setAdjust] = useState('0');
   const canEdit = can('pricing.manage');
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
     fb.clear();
+    const bp = percentToBp(adjust);
+    if (bp === null) return fb.fail(null, 'Enter the adjustment as a percentage, e.g. 50 or -25');
     const name = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
     try {
-      await api.post('/admin/categories', { name, label: label.trim(), sort_order: (categories.length + 1) * 10 });
+      await api.post('/admin/categories', { name, label: label.trim(), sort_order: (categories.length + 1) * 10, price_adjustment_bp: bp });
       setLabel('');
+      setAdjust('0');
       await reload();
-      fb.ok('Category added. Add rates for it so its customers can book.');
+      fb.ok('Category added. Its customers pay the base prices adjusted by its percentage.');
     } catch (err) {
       fb.fail(err, 'Could not add the category');
     }
   }
 
-  async function toggle(c: CategoryRow) {
+  async function save(c: CategoryRow, changes: Partial<CategoryRow>) {
+    fb.clear();
     try {
-      await api.put(`/admin/categories/${c.id}`, { label: c.label, sort_order: c.sort_order, is_active: !c.is_active });
+      await api.put(`/admin/categories/${c.id}`, { label: c.label, sort_order: c.sort_order, is_active: c.is_active, price_adjustment_bp: c.price_adjustment_bp, ...changes });
       await reload();
+      if ('price_adjustment_bp' in changes) fb.ok(`${c.label} now pays ${describeAdjustment(changes.price_adjustment_bp ?? 0).toLowerCase()}. Existing bookings keep their agreed price.`);
     } catch (err) {
       fb.fail(err, 'Could not update the category');
     }
@@ -562,24 +589,73 @@ function CategoriesPanel({ categories, reload }: { categories: CategoryRow[]; re
 
   return (
     <section className="card mt-4">
-      <p className="text-sm text-gray-600">Retired categories are hidden from registration; existing customers and bookings keep them.</p>
+      <p className="text-sm text-gray-600">
+        Each price group pays every resource's base price adjusted by its percentage: 0% pays the base price, −25% pays a quarter
+        less, +50% pays half as much again, and −100% is free. Retired categories are hidden from registration; existing customers
+        and bookings keep them.
+      </p>
       <ul className="mt-4 divide-y rounded-xl border">
         {categories.map((c) => (
-          <li key={c.id} className={`flex items-center justify-between px-4 py-3 ${c.is_active ? '' : 'opacity-50'}`}>
-            <span className="font-bold">{c.label}{!c.is_active && ' (retired)'}</span>
-            {canEdit && <button className="text-sm text-scout-purple underline" onClick={() => toggle(c)}>{c.is_active ? 'Retire' : 'Reinstate'}</button>}
-          </li>
+          <CategoryItem key={c.id} category={c} canEdit={canEdit} onSave={(changes) => save(c, changes)} />
         ))}
       </ul>
       {canEdit && (
-        <form className="mt-4 flex flex-wrap gap-2" onSubmit={add}>
-          <label className="sr-only" htmlFor="cat-label">New category name</label>
-          <input id="cat-label" className="input max-w-sm" placeholder="e.g. Schools" value={label} onChange={(e) => setLabel(e.target.value)} required minLength={2} />
+        <form className="mt-4 flex flex-wrap items-end gap-2" onSubmit={add}>
+          <div>
+            <label className="label" htmlFor="cat-label">New category name</label>
+            <input id="cat-label" className="input max-w-sm" placeholder="e.g. Schools" value={label} onChange={(e) => setLabel(e.target.value)} required minLength={2} />
+          </div>
+          <div>
+            <label className="label" htmlFor="cat-adjust">Adjustment (%)</label>
+            <input id="cat-adjust" className="input w-28" inputMode="decimal" value={adjust} onChange={(e) => setAdjust(e.target.value)} required />
+          </div>
           <button className="btn-primary">Add category</button>
         </form>
       )}
       {fb.node}
     </section>
+  );
+}
+
+/** "50", "+50", "-25", "12.5" → basis points; null when not a valid percentage. */
+function percentToBp(text: string): number | null {
+  const t = text.trim().replace('%', '').replace('−', '-');
+  if (!/^[+-]?\d+(\.\d{1,2})?$/.test(t)) return null;
+  const bp = Math.round(Number(t) * 100);
+  return bp < -10_000 || bp > 100_000 ? null : bp;
+}
+
+function CategoryItem({ category: c, canEdit, onSave }: { category: CategoryRow; canEdit: boolean; onSave: (changes: Partial<CategoryRow>) => Promise<void> }) {
+  const [value, setValue] = useState(String(c.price_adjustment_bp / 100));
+  const [invalid, setInvalid] = useState(false);
+  useEffect(() => setValue(String(c.price_adjustment_bp / 100)), [c.price_adjustment_bp]);
+  const bp = percentToBp(value);
+  return (
+    <li className={`flex flex-wrap items-center justify-between gap-2 px-4 py-3 ${c.is_active ? '' : 'opacity-50'}`}>
+      <span>
+        <span className="font-bold">{c.label}{!c.is_active && ' (retired)'}</span>
+        <span className="ml-2 text-sm text-gray-600">{describeAdjustment(c.price_adjustment_bp)}</span>
+      </span>
+      {canEdit && (
+        <span className="flex flex-wrap items-center gap-2">
+          <form
+            className="flex items-center gap-1"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (bp === null) return setInvalid(true);
+              setInvalid(false);
+              void onSave({ price_adjustment_bp: bp });
+            }}
+          >
+            <label className="sr-only" htmlFor={`adj-${c.id}`}>Adjustment for {c.label} (%)</label>
+            <input id={`adj-${c.id}`} className={`input w-24 py-1 ${invalid ? 'border-scout-red' : ''}`} inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
+            <span className="text-sm">%</span>
+            <button className="btn-secondary px-3 py-1 text-sm" disabled={bp === c.price_adjustment_bp}>Save</button>
+          </form>
+          <button className="text-sm text-scout-purple underline" onClick={() => onSave({ is_active: !c.is_active })}>{c.is_active ? 'Retire' : 'Reinstate'}</button>
+        </span>
+      )}
+    </li>
   );
 }
 

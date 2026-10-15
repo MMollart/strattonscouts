@@ -60,7 +60,7 @@ describe('role permissions (FR08)', () => {
   it('lets Booking Admins run bookings but not pricing, administrators or settings', async () => {
     const cookie = await sessionFor(env, 'booker');
     expect((await call(adminBookings.onRequestGet, { env, cookie })).status).toBe(200);
-    expect((await call(pricing.onRequestPost, { env, cookie, body: { resource_id: 'res_main', category_id: 'cat_scouts', pricing_model: 'hourly', amount_pence: 1, effective_from: '2026-01-01T00:00:00Z' } })).status).toBe(403);
+    expect((await call(pricing.onRequestPost, { env, cookie, body: { resource_id: 'res_main', pricing_model: 'hourly', amount_pence: 1, effective_from: '2026-01-01T00:00:00Z' } })).status).toBe(403);
     expect((await call(admins.onRequestGet, { env, cookie })).status).toBe(403);
     expect((await call(adminRole.onRequestPut, { env, cookie, method: 'PUT', params: { id: 'customer' }, body: { role: 'super_admin' } })).status).toBe(403);
     expect((await call(settings.onRequestGet, { env, cookie })).status).toBe(403);

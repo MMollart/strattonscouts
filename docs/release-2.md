@@ -19,6 +19,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | *(none)* | FR09 Admin calendar (reads existing tables) |
 | `0012_assets.sql` | FR07 Physical asset management |
 | `0013_booking_groups.sql` | Several resources in one booking |
+| `0014_base_prices.sql` | One base price per resource, adjusted per price group |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -513,3 +514,38 @@ Resources that include each other (a hall and the Whole Venue) cannot be
 combined. The customer gets one email per outcome (confirmed, awaiting
 approval, provisional) naming every resource it covers, rather than one
 email per resource. Recurring bookings remain single-resource.
+
+## One base price per resource
+
+**Before.** Admins entered a separate price for every resource and price
+group, so a price change meant editing up to three rows per resource.
+
+**Now.** Each resource has one base price (`base_rates`: charging model,
+amount, effective from/to, active). Each pricing category has a percentage
+adjustment (`pricing_categories.price_adjustment_bp`, in basis points):
+0% pays the base price, +50% pays half as much again, −25% a quarter less,
+−100% is free. The pricing engine applies the customer's (or
+organisation's) category adjustment to the base price, rounded to the
+penny, before discounts and organisation arrangements, which work as
+before. Admin → Pricing → Base prices sets the price and previews what
+each group pays; Admin → Pricing → Categories sets the percentages.
+
+**Migration 0014.** The base price is the price of the lowest-ordered
+category that priced each resource (Scouts), so Scouts prices are
+unchanged. Each other category's percentage is the average of its old
+price divided by the base price over the resources where both were in
+force, with the same charging model, rounded to a whole percent. With the
+seed prices that gives Community +64% and Public +142%, so some Community
+and Public prices move a little (Public Main Hall was £25.00/h, now
+£24.20/h; Public Small Hall was £15.00/h, now £12.10/h). Existing bookings
+keep the price agreed when they were made. `pricing_rates` is kept but no
+longer read.
+
+## Shrinking large images on upload
+
+Images over 5 MB (and any HEIC/HEIF photo) are resized in the browser to at
+most 2560 px on the long edge and recompressed (JPEG, or WebP for PNG/WebP
+so transparency survives), stepping down in size and quality until they
+fit under 5 MB. The server limit is unchanged. Limits: HEIC/HEIF photos can
+only be read by Safari, so other browsers ask for a JPEG, PNG or WebP
+instead; an animated image that has to be shrunk keeps only its first frame.

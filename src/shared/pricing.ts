@@ -214,3 +214,16 @@ export const RATE_MODEL_LABEL: Record<RateModel, string> = {
 export function formatPercent(bp: number): string {
   return `${Number((bp / 100).toFixed(2))}%`;
 }
+
+/** A price group's price from the resource's base price: base × (1 + adjustment), to the nearest penny. */
+export function adjustedAmount(basePence: number, adjustmentBp: number): number {
+  return Math.max(0, Math.round((Math.max(0, Math.trunc(basePence)) * (10_000 + adjustmentBp)) / 10_000));
+}
+
+/** "+50%", "−25%", "Free" or "Base price" for a group's adjustment. */
+export function describeAdjustment(adjustmentBp: number): string {
+  if (adjustmentBp === 0) return 'Base price';
+  if (adjustmentBp <= -10_000) return 'Free';
+  const pct = Math.abs(adjustmentBp) / 100;
+  return `${adjustmentBp > 0 ? '+' : '−'}${Number.isInteger(pct) ? pct : pct.toFixed(2)}%`;
+}

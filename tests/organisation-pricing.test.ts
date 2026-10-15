@@ -44,7 +44,8 @@ describe('organisation-specific pricing (FR14)', () => {
     // Other resources are unaffected.
     expect(await orgQuote('res_main')).toMatchObject({ breakdown: { total_pence: 2000, source: 'category_rate' } });
     // Personal bookings by the same member are unaffected.
-    expect(await quotePrice(env, { resourceId: 'res_small', userId: 'u1', ...win })).toMatchObject({ breakdown: { total_pence: 3000 } });
+    // Public pays the base price +142% (migration 0014 derives this from the old public prices).
+    expect(await quotePrice(env, { resourceId: 'res_small', userId: 'u1', ...win })).toMatchObject({ breakdown: { total_pence: 2420 } });
   });
 
   it('applies an agreed rate with its own charging model', async () => {
