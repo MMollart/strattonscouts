@@ -126,6 +126,8 @@ export async function sendEmail(
         headers: {
           Authorization: `Bearer ${env.EMAIL_API_KEY ?? ''}`,
           'content-type': 'application/json',
+          // Lets the provider drop a duplicate if two sends race.
+          ...(args.dedupeKey ? { 'Idempotency-Key': args.dedupeKey } : {}),
         },
         body: JSON.stringify({
           from: env.EMAIL_FROM ?? 'bookings@strattonscouts.example',
@@ -139,8 +141,10 @@ export async function sendEmail(
         errorMsg = `provider responded ${res.status}`;
       }
     } else {
-      // console provider (development): log instead of sending.
+      // console provider (development): log instead of sending. The body is
+      // included outside production so reset links can be used locally.
       console.log(`[email:${args.template}] to=${args.to} subject="${subject}"`);
+      if (env.ENVIRONMENT !== 'production') console.log(body);
     }
   } catch (e) {
     status = 'failed';

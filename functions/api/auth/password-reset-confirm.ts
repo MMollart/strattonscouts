@@ -26,12 +26,20 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   const passwordHash = await hashPassword(parsed.data.password);
   const ts = now();
-  await env.DB.batch([
-    env.DB.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').bind(passwordHash, ts, reset.user_id),
-    env.DB.prepare('UPDATE password_resets SET used_at = ? WHERE id = ?').bind(ts, reset.id),
+  // Claim the token first; the password change and session invalidation only
+  // apply if this request was the one that consumed it.
+  const [claim] = await env.DB.batch([
+    env.DB.prepare('UPDATE password_resets SET used_at = ? WHERE id = ? AND used_at IS NULL AND expires_at > ?').bind(ts, reset.id, ts),
+    env.DB.prepare(
+      `UPDATE users SET password_hash = ?, updated_at = ?
+       WHERE id = ? AND EXISTS (SELECT 1 FROM password_resets WHERE id = ? AND used_at = ?)`,
+    ).bind(passwordHash, ts, reset.user_id, reset.id, ts),
     // Invalidate existing sessions for safety.
-    env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(reset.user_id),
+    env.DB.prepare(
+      'DELETE FROM sessions WHERE user_id = ? AND EXISTS (SELECT 1 FROM password_resets WHERE id = ? AND used_at = ?)',
+    ).bind(reset.user_id, reset.id, ts),
   ]);
+  if (claim.meta.changes !== 1) return error('Invalid or expired reset token', 400);
 
   return json({ ok: true });
 };

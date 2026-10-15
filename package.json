@@ -14,7 +14,7 @@
     "test:watch": "vitest",
     "pages:dev": "wrangler pages dev ./dist --d1 DB --r2 BUCKET",
     "db:migrate:local": "wrangler d1 migrations apply strattonscouts-dev --local",
-    "db:migrate:remote": "wrangler d1 migrations apply strattonscouts-prod --remote",
+    "db:migrate:remote": "wrangler d1 migrations apply strattonscouts-prod --remote --env production",
     "db:seed:local": "wrangler d1 execute strattonscouts-dev --local --file=./migrations/0002_seed.sql"
   },
   "dependencies": {

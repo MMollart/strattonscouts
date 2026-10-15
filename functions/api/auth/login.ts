@@ -3,6 +3,8 @@ import { error, json } from '../../_lib/http';
 import { loginSchema } from '@shared/validation';
 import { verifyPassword } from '../../_lib/crypto';
 import { createSession, sessionCookie, rateLimit, clientIp } from '../../_lib/auth';
+import { toPublicUser } from '../../_lib/users';
+import type { RoleName } from '@shared/types';
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   let body: unknown;
@@ -32,17 +34,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     'SELECT r.name AS name FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ?',
   )
     .bind(user.id)
-    .all<{ name: string }>();
+    .all<{ name: RoleName }>();
 
   const { token, maxAge } = await createSession(env, user.id);
-  return json(
-    {
-      id: user.id,
-      email: user.email,
-      full_name: user.full_name,
-      pricing_category_id: user.pricing_category_id,
-      roles: roleRows.results.map((r) => r.name),
-    },
-    { headers: { 'set-cookie': sessionCookie(token, maxAge) } },
-  );
+  const publicUser = await toPublicUser(env, {
+    id: user.id,
+    email: user.email,
+    full_name: user.full_name,
+    pricing_category_id: user.pricing_category_id,
+    roles: roleRows.results.map((r) => r.name),
+  });
+  return json(publicUser, { headers: { 'set-cookie': sessionCookie(token, maxAge) } });
 };

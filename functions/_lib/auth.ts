@@ -110,18 +110,16 @@ export async function rateLimit(
   windowMs: number,
 ): Promise<boolean> {
   const since = new Date(Date.now() - windowMs).toISOString();
-  const row = await env.DB.prepare(
-    'SELECT COUNT(*) AS c FROM auth_attempts WHERE identifier = ? AND action = ? AND created_at >= ?',
+  // Count and record in one statement so concurrent requests cannot all slip
+  // under the limit.
+  const result = await env.DB.prepare(
+    `INSERT INTO auth_attempts (id, identifier, action, created_at)
+     SELECT ?, ?, ?, ?
+     WHERE (SELECT COUNT(*) FROM auth_attempts WHERE identifier = ? AND action = ? AND created_at >= ?) < ?`,
   )
-    .bind(identifier, action, since)
-    .first<{ c: number }>();
-  if ((row?.c ?? 0) >= limit) return false;
-  await env.DB.prepare(
-    'INSERT INTO auth_attempts (id, identifier, action, created_at) VALUES (?, ?, ?, ?)',
-  )
-    .bind(newId('att'), identifier, action, now())
+    .bind(newId('att'), identifier, action, now(), identifier, action, since, limit)
     .run();
-  return true;
+  return result.meta.changes === 1;
 }
 
 export function clientIp(request: Request): string {

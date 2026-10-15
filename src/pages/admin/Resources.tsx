@@ -81,6 +81,15 @@ function ResourceEditor({ draft, onClose, onSaved }: { draft: Draft; onClose: ()
   const [error, setError] = useState<string | null>(null);
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  // A native modal dialog moves focus inside, keeps it there, closes on
+  // Escape and returns focus to the trigger when closed.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    return () => dialog?.close();
+  }, []);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -117,9 +126,17 @@ function ResourceEditor({ draft, onClose, onSaved }: { draft: Draft; onClose: ()
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4" role="dialog" aria-modal="true">
-      <form className="card my-8 w-full max-w-lg space-y-4" onSubmit={save}>
-        <h2 className="text-2xl">{form.id ? 'Edit resource' : 'New resource'}</h2>
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="resource-editor-heading"
+      className="w-full max-w-lg bg-transparent p-0 backdrop:bg-black/40"
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+    >
+      <form className="card w-full space-y-4" onSubmit={save}>
+        <h2 id="resource-editor-heading" className="text-2xl">{form.id ? 'Edit resource' : 'New resource'}</h2>
         <div>
           <label className="label" htmlFor="r-name">Name</label>
           <input id="r-name" className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
@@ -173,7 +190,7 @@ function ResourceEditor({ draft, onClose, onSaved }: { draft: Draft; onClose: ()
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
         </div>
       </form>
-    </div>
+    </dialog>
   );
 }
 

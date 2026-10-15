@@ -2,6 +2,7 @@ import type { Env } from '../../_lib/http';
 import { error, json } from '../../_lib/http';
 import { getAuthUser, isAdmin } from '../../_lib/auth';
 import { decryptAtRest } from '../../_lib/crypto';
+import { canonicalIso } from '../../_lib/availability-sql';
 
 // Admin: list/search/filter bookings including customer contact information.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
@@ -19,8 +20,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   const binds: unknown[] = [];
   if (status) { clauses.push('b.status = ?'); binds.push(status); }
   if (resourceId) { clauses.push('b.resource_id = ?'); binds.push(resourceId); }
-  if (from) { clauses.push('b.ends_at >= ?'); binds.push(from); }
-  if (to) { clauses.push('b.starts_at <= ?'); binds.push(to); }
+  if (from && !Number.isNaN(Date.parse(from))) { clauses.push('b.ends_at >= ?'); binds.push(canonicalIso(from)); }
+  if (to && !Number.isNaN(Date.parse(to))) { clauses.push('b.starts_at <= ?'); binds.push(canonicalIso(to)); }
   if (q) { clauses.push('(b.reference LIKE ? OR u.full_name LIKE ? OR u.email LIKE ?)'); binds.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 

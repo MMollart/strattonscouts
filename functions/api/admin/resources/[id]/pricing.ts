@@ -9,12 +9,16 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request, params })
   if (!isAdmin(user)) return error('Not authorised', 403);
   const resourceId = String(params.id);
   const rows = await env.DB.prepare(
-    `SELECT rp.id, rp.category_id, pc.name AS category, pc.label, rp.amount_pence, rp.is_free
-     FROM resource_pricing rp JOIN pricing_categories pc ON pc.id = rp.category_id
-     WHERE rp.resource_id = ? ORDER BY pc.sort_order`,
+    `SELECT rp.id, pc.id AS category_id, pc.name AS category, pc.label,
+            COALESCE(rp.amount_pence, 0) AS amount_pence, COALESCE(rp.is_free, 0) AS is_free
+     FROM pricing_categories pc
+     LEFT JOIN resource_pricing rp ON rp.category_id = pc.id AND rp.resource_id = ?
+     ORDER BY pc.sort_order`,
   )
     .bind(resourceId)
     .all();
+  // Every category is listed so prices can be set for a new resource; `id` is
+  // null where no price has been configured yet (customers cannot book it).
   return json(rows.results.map((r) => ({ ...r, is_free: !!(r.is_free as number) })));
 };
 

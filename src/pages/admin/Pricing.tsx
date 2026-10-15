@@ -6,7 +6,7 @@ import { Spinner, ErrorState } from '../../components/ui';
 import { formatGBP } from '@shared/pricing';
 
 interface ResourceRow { id: string; name: string; }
-interface PriceRow { id: string; category_id: string; category: string; label: string; amount_pence: number; is_free: boolean; }
+interface PriceRow { id: string | null; category_id: string; category: string; label: string; amount_pence: number; is_free: boolean; }
 interface ConflictRow { id: string; resource_id: string; conflicts_with_id: string; is_mandatory: boolean; }
 
 export default function AdminPricing() {
@@ -58,6 +58,7 @@ function PricingEditor({ resourceId }: { resourceId: string }) {
         amount_pence: row.amount_pence,
         is_free: row.is_free,
       });
+      setRows((current) => current.map((r) => (r.category_id === row.category_id && r.id === null ? { ...r, id: 'saved' } : r)));
       setMsg(`Saved ${row.label} pricing. Existing bookings keep their original price.`);
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : 'Save failed');
@@ -76,8 +77,13 @@ function PricingEditor({ resourceId }: { resourceId: string }) {
       <div className="mt-4 space-y-3">
         {rows.map((row, i) => (
           <div key={row.category_id} className="flex flex-wrap items-center gap-3">
-            <span className="w-32 font-bold">{row.label}</span>
+            <label htmlFor={`price-${row.category_id}`} className="w-32 font-bold">
+              {row.label}
+              {row.id === null && <span className="block text-xs font-normal text-scout-red">Not set yet</span>}
+            </label>
             <input
+              id={`price-${row.category_id}`}
+              aria-label={`${row.label} price in pence`}
               type="number"
               min={0}
               className="input w-32"

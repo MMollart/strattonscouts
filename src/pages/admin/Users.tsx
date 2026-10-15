@@ -82,10 +82,19 @@ export default function AdminUsers() {
                   {categories?.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                 </select>
                 {isSuperAdmin && (
-                  isAdminUser ? (
-                    <button className="btn-secondary" disabled={working === u.id} onClick={() => run(u.id, { revoke_role: 'admin' })}>
-                      Revoke admin
+                  u.roles.includes('super_admin') ? (
+                    <button className="btn-secondary" disabled={working === u.id} onClick={() => run(u.id, { revoke_role: 'super_admin' })}>
+                      Remove Super Admin
                     </button>
+                  ) : isAdminUser ? (
+                    <>
+                      <button className="btn-secondary" disabled={working === u.id} onClick={() => run(u.id, { revoke_role: 'admin' })}>
+                        Revoke admin
+                      </button>
+                      <button className="btn-secondary" disabled={working === u.id} onClick={() => run(u.id, { grant_role: 'super_admin' })}>
+                        Make Super Admin
+                      </button>
+                    </>
                   ) : (
                     <button className="btn-secondary" disabled={working === u.id} onClick={() => run(u.id, { grant_role: 'admin' })}>
                       Make admin

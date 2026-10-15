@@ -40,7 +40,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     .run();
 
   const { token, maxAge } = await createSession(env, id);
-  return json({ id, email: email.toLowerCase(), full_name, pricing_category_id: cat.id, roles: [] }, {
+  return json({ id, email: email.toLowerCase(), full_name, phone, pricing_category_id: cat.id, roles: [] }, {
     status: 201,
     headers: { 'set-cookie': sessionCookie(token, maxAge) },
   });
