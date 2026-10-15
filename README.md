@@ -1,4 +1,4 @@
-# Stratton Scouts – Resource Booking Platform
+# Stratton Scouts – Resource Booking Platform 
 
 A Scouts-branded resource booking website for Stratton Scouts, built entirely on
 the Cloudflare developer platform. Customers can browse facilities, check live
