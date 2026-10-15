@@ -1,12 +1,14 @@
 import type { Env } from '../../_lib/http';
 import { error, json } from '../../_lib/http';
 import { loadCurrentPrices } from '../../_lib/public-prices';
+import { loadRestrictions } from '../../_lib/restrictions';
+import { describeRule } from '@shared/availability-rules';
 
 // Public: single resource detail by slug.
 export const onRequestGet: PagesFunction<Env> = async ({ env, params }) => {
   const slug = String(params.slug);
   const r = await env.DB.prepare(
-    `SELECT id, name, slug, description, resource_type, is_active, requires_approval, pricing_model, created_at, updated_at
+    `SELECT id, name, slug, description, resource_type, is_active, requires_approval, pricing_model, min_notice_minutes, max_advance_days, created_at, updated_at
      FROM resources WHERE slug = ?`,
   )
     .bind(slug)
@@ -21,8 +23,11 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, params }) => {
     .bind(r.id)
     .all<{ id: string; r2_key: string; is_primary: number }>();
 
+  const restrictions = await loadRestrictions(env, r.id as string);
+
   return json({
     ...r,
+    availability_rules: restrictions.rules.map(describeRule),
     is_active: !!(r.is_active as number),
     requires_approval: !!(r.requires_approval as number),
     prices: prices.map(({ resource_id: _r, ...p }) => p),

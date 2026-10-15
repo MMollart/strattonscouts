@@ -9,6 +9,15 @@ import {
 import { quotePrice } from './pricing-engine';
 import type { BookingStatus } from '@shared/types';
 import type { PriceBreakdown } from '@shared/pricing';
+import { checkRestrictions } from './restrictions';
+import type { RestrictionKind, RuleViolation } from '@shared/availability-rules';
+import { OVERRIDABLE } from '@shared/availability-rules';
+
+/** An authorised administrator's override of booking restrictions (FR03). */
+export interface RestrictionOverride {
+  kinds: RestrictionKind[];
+  reason: string;
+}
 
 export interface CreateBookingParams {
   env: Env;
@@ -19,12 +28,15 @@ export interface CreateBookingParams {
   actorId: string; // who is performing the action (customer or admin)
   /** Book on behalf of this organisation; the caller has checked membership. */
   organisationId?: string | null;
+  /** Restrictions to override; the caller has checked availability.manage. */
+  override?: RestrictionOverride | null;
 }
 
 export type CreateBookingFailure = {
   ok: false;
-  code: 'resource_not_found' | 'inactive' | 'closure' | 'conflict' | 'no_price';
+  code: 'resource_not_found' | 'inactive' | 'closure' | 'conflict' | 'no_price' | 'restricted';
   message: string;
+  violations?: RuleViolation[];
 };
 
 export type CreateBookingResult =
@@ -54,6 +66,8 @@ export interface BookingDraft {
   organisationId: string | null;
   actorId: string;
   eventType: string;
+  /** Overridden restrictions to record against the booking. */
+  overrides: { kind: RestrictionKind; detail: string; reason: string }[];
 }
 
 /**
@@ -117,7 +131,35 @@ export function bookingInsertStatements(env: Env, d: BookingDraft): D1PreparedSt
      SELECT ?, ?, ?, ?, NULL, ? WHERE EXISTS (SELECT 1 FROM bookings WHERE id = ?)`,
   ).bind(newId('bev'), d.id, d.eventType, d.actorId, ts, d.id);
 
-  return [insertBooking, insertAllocation, insertEvent];
+  const insertOverrides = d.overrides.map((o) =>
+    env.DB.prepare(
+      `INSERT INTO availability_overrides (id, booking_id, rule, detail, admin_id, reason, created_at)
+       SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM bookings WHERE id = ?)`,
+    ).bind(newId('ovr'), d.id, o.kind, o.detail, d.actorId, o.reason, ts, d.id),
+  );
+
+  return [insertBooking, insertAllocation, insertEvent, ...insertOverrides];
+}
+
+/**
+ * Apply restrictions: violations not covered by an override fail the request;
+ * overridden ones are returned to be recorded. Conflicts and exceptional
+ * closures are never overridable (they are enforced by the atomic insert).
+ */
+export async function applyRestrictions(
+  env: Env,
+  args: { resourceId: string; startsAt: string; endsAt: string; override?: RestrictionOverride | null },
+): Promise<{ ok: true; overrides: BookingDraft['overrides'] } | CreateBookingFailure> {
+  const violations = await checkRestrictions(env, args.resourceId, args.startsAt, args.endsAt);
+  const allowed = new Set((args.override?.kinds ?? []).filter((k) => OVERRIDABLE.includes(k)));
+  const blocking = violations.filter((v) => !allowed.has(v.kind));
+  if (blocking.length) {
+    return { ok: false, code: 'restricted', message: blocking.map((v) => v.message).join(' '), violations: blocking };
+  }
+  return {
+    ok: true,
+    overrides: violations.map((v) => ({ kind: v.kind, detail: v.message, reason: args.override!.reason })),
+  };
 }
 
 /** Resource checks and server-side price for a requested booking. */
@@ -147,6 +189,9 @@ export async function prepareBooking(
       : { ok: false, code: 'no_price', message: 'No price configured for your category' };
   }
 
+  const restrictions = await applyRestrictions(env, { resourceId: params.resourceId, startsAt, endsAt, override: params.override });
+  if (!restrictions.ok) return restrictions;
+
   // Closures are checked first so the customer gets the more specific message;
   // the atomic insert re-checks both conditions regardless.
   const closure = await env.DB.prepare(OVERLAPPING_CLOSURE_SQL)
@@ -171,6 +216,7 @@ export async function prepareBooking(
       organisationId: params.organisationId ?? null,
       actorId: params.actorId,
       eventType: status === 'confirmed' ? 'confirmed' : 'created',
+      overrides: restrictions.overrides,
     },
   };
 }

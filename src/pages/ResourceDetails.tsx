@@ -12,8 +12,17 @@ interface ResourceDetail {
   description: string;
   pricing_model: string;
   requires_approval: boolean;
+  min_notice_minutes: number | null;
+  max_advance_days: number | null;
+  availability_rules: string[];
   prices: { category: string; label: string; pricing_model: string; amount_pence: number; is_free: boolean }[];
   images: { id: string; r2_key: string; is_primary: boolean }[];
+}
+
+function noticeText(minutes: number): string {
+  if (minutes % 1440 === 0) return `${minutes / 1440} day${minutes === 1440 ? '' : 's'}`;
+  if (minutes % 60 === 0) return `${minutes / 60} hour${minutes === 60 ? '' : 's'}`;
+  return `${minutes} minutes`;
 }
 
 const MODEL_LABEL: Record<string, string> = { hourly: 'per hour', nightly: 'per night', fixed: 'per booking' };
@@ -57,6 +66,17 @@ export default function ResourceDetails() {
           ))}
         </ul>
         <p className="mt-2 text-xs text-gray-500">Organisation rates and any discounts are shown in your quote when you book.</p>
+
+        {(data.min_notice_minutes || data.max_advance_days || data.availability_rules.length > 0) && (
+          <>
+            <h2 className="mt-8 text-xl">Booking rules</h2>
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-gray-700">
+              {data.min_notice_minutes ? <li>Book at least {noticeText(data.min_notice_minutes)} in advance.</li> : null}
+              {data.max_advance_days ? <li>Bookings open {data.max_advance_days} days ahead.</li> : null}
+              {data.availability_rules.map((r) => <li key={r}>{r}</li>)}
+            </ul>
+          </>
+        )}
 
         <div className="mt-8 flex gap-4">
           {user ? (

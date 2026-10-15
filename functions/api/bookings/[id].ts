@@ -23,8 +23,18 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request, params })
   const access = await bookingAccess(env, user, booking);
   if (!access.canView) return error('Not authorised', 403);
 
-  // Contact details are only shown to administrators.
+  // Contact details and internal records are only shown to administrators.
   if (!access.isAdminView) delete booking.customer_email;
+  const overrides = access.isAdminView
+    ? (
+        await env.DB.prepare(
+          `SELECT o.id, o.rule, o.detail, o.reason, o.created_at, u.full_name AS admin_name
+           FROM availability_overrides o LEFT JOIN users u ON u.id = o.admin_id WHERE o.booking_id = ? ORDER BY o.created_at`,
+        )
+          .bind(id)
+          .all()
+      ).results
+    : undefined;
 
-  return json({ ...booking, can_manage: access.canManage });
+  return json({ ...booking, can_manage: access.canManage, ...(overrides ? { overrides } : {}) });
 };

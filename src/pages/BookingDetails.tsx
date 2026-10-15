@@ -6,6 +6,7 @@ import { Spinner, ErrorState, StatusBadge } from '../components/ui';
 import { formatGBP } from '@shared/pricing';
 import { useAuth } from '../lib/auth';
 import { formatLondon } from '@shared/londonTime';
+import { RESTRICTION_LABEL, type RestrictionKind } from '@shared/availability-rules';
 
 interface BookingDetail {
   id: string;
@@ -25,6 +26,7 @@ interface BookingDetail {
   base_amount_pence: number | null;
   discount_pence: number;
   discount_label: string | null;
+  overrides?: { id: string; rule: string; detail: string; reason: string; created_at: string; admin_name: string | null }[];
 }
 
 function fmt(iso: string): string {
@@ -90,6 +92,20 @@ export default function BookingDetails() {
         <p className="mt-4 rounded-lg bg-scout-yellow/20 px-4 py-2 text-sm text-yellow-800">
           This booking is awaiting administrator approval.
         </p>
+      )}
+
+      {data.overrides && data.overrides.length > 0 && (
+        <section className="card mt-4" aria-labelledby="overrides-heading">
+          <h2 id="overrides-heading" className="text-lg">Booking rules overridden</h2>
+          <ul className="mt-2 space-y-2 text-sm">
+            {data.overrides.map((o) => (
+              <li key={o.id}>
+                <p className="font-bold">{RESTRICTION_LABEL[o.rule as RestrictionKind] ?? o.rule}: {o.detail}</p>
+                <p className="text-gray-600">Reason: {o.reason} ({o.admin_name ?? 'administrator'}, {formatLondon(o.created_at)})</p>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {actionError && <div className="mt-4"><ErrorState message={actionError} /></div>}

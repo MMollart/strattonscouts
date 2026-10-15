@@ -9,7 +9,7 @@ import { Spinner, EmptyState, ErrorState, StatusBadge } from '../../components/u
 import { formatGBP } from '@shared/pricing';
 import { formatLondon, londonToday } from '@shared/londonTime';
 import {
-  AVAILABILITY_MESSAGE,
+  AvailabilityNotice,
   BookingWindowFields,
   type BookingWindow,
   useAvailability,
@@ -195,8 +195,12 @@ function BookForCustomer({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [overrideReason, setOverrideReason] = useState('');
+  const { can } = useAuth();
   const iso = windowToIso(win);
   const availability = useAvailability(resourceId || undefined, iso);
+  // Rule restrictions (FR03) can be overridden with a reason; closures and clashes cannot.
+  const canOverride = can('availability.manage') && availability.status === 'restricted';
   const { quote, loading: quoting, error: quoteError } = useQuote({ resourceId: resourceId || undefined, window: customerId ? iso : null, onBehalfOfUserId: customerId || undefined });
 
   const matches = (customers ?? []).filter((c) =>
@@ -217,6 +221,9 @@ function BookForCustomer({
         starts_at: iso.startsAt,
         ends_at: iso.endsAt,
         on_behalf_of_user_id: customerId,
+        override: canOverride && overrideReason.trim()
+          ? { kinds: availability.violations.map((v) => v.kind), reason: overrideReason.trim() }
+          : undefined,
       });
       onCreated();
     } catch (err) {
@@ -255,10 +262,13 @@ function BookForCustomer({
         </select>
       </div>
       <BookingWindowFields value={win} onChange={setWin} idPrefix="bfc" />
-      {availability !== 'idle' && (
-        <p className={`text-sm font-bold ${availability === 'available' ? 'text-scout-green' : availability === 'checking' ? 'text-gray-500' : 'text-scout-red'}`} role="status">
-          {AVAILABILITY_MESSAGE[availability]}
-        </p>
+      <AvailabilityNotice result={availability} />
+      {canOverride && (
+        <div className="rounded-xl border border-scout-red/40 p-3">
+          <label className="label" htmlFor="bfc-override">Override reason (recorded on the booking)</label>
+          <input id="bfc-override" className="input" maxLength={500} value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="Why this booking should go ahead anyway" />
+          <p className="mt-1 text-xs text-gray-500">Leave blank to keep the restriction. Closures and clashing bookings can never be overridden.</p>
+        </div>
       )}
       {customerId && <div className="rounded-xl bg-scout-off-white p-4"><PriceSummary price={quote} loading={quoting} error={quoteError} /></div>}
       <p className="text-xs text-gray-500">

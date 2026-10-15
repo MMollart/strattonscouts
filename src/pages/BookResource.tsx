@@ -6,7 +6,7 @@ import { Spinner, ErrorState } from '../components/ui';
 import { useAuth } from '../lib/auth';
 import { londonToday, toLondon } from '@shared/londonTime';
 import {
-  AVAILABILITY_MESSAGE,
+  AvailabilityNotice,
   BookingWindowFields,
   type BookingWindow,
   useAvailability,
@@ -111,14 +111,7 @@ export default function BookResource() {
         )}
         <BookingWindowFields value={win} onChange={setWin} minDate={londonToday()} />
         {!iso && <p className="text-sm text-scout-red">The end must be after the start.</p>}
-        {availability !== 'idle' && (
-          <p
-            className={`text-sm font-bold ${availability === 'available' ? 'text-scout-green' : availability === 'checking' ? 'text-gray-500' : 'text-scout-red'}`}
-            role="status"
-          >
-            {AVAILABILITY_MESSAGE[availability]}
-          </p>
-        )}
+        <AvailabilityNotice result={availability} />
 
         <div className="rounded-xl bg-scout-off-white p-4">
           <div className="flex items-center justify-between">
@@ -133,7 +126,7 @@ export default function BookResource() {
 
         {submitError && <ErrorState message={submitError} />}
 
-        <button className="btn-primary w-full" onClick={submit} disabled={submitting || !quote || availability === 'conflict' || availability === 'closure' || availability === 'inactive'}>
+        <button className="btn-primary w-full" onClick={submit} disabled={submitting || !quote || ['conflict', 'closure', 'inactive', 'restricted'].includes(availability.status)}>
           {submitting ? 'Submitting…' : resource.requires_approval ? 'Request booking' : 'Confirm booking'}
         </button>
       </div>

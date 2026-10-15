@@ -5,7 +5,7 @@ import { loadCurrentPrices, type PublicPrice } from '../../_lib/public-prices';
 // Public: list active resources with primary image key and category prices.
 export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
   const resources = await env.DB.prepare(
-    `SELECT id, name, slug, description, resource_type, is_active, requires_approval, pricing_model, created_at, updated_at
+    `SELECT id, name, slug, description, resource_type, is_active, requires_approval, pricing_model, min_notice_minutes, max_advance_days, created_at, updated_at
      FROM resources WHERE is_active = 1 ORDER BY name`,
   ).all();
 

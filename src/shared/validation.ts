@@ -38,6 +38,11 @@ export const passwordResetConfirmSchema = z.object({
   password: z.string().min(10).max(200),
 });
 
+export const overrideSchema = z.object({
+  kinds: z.array(z.enum(['min_notice', 'max_advance', 'opening_hours', 'recurring_restriction'])).min(1),
+  reason: z.string().trim().min(3).max(500),
+});
+
 export const createBookingSchema = z
   .object({
     resource_id: z.string().min(1),
@@ -47,6 +52,8 @@ export const createBookingSchema = z
     on_behalf_of_user_id: z.string().min(1).optional(),
     // book on behalf of an organisation the customer belongs to (FR01)
     organisation_id: z.string().min(1).nullable().optional(),
+    // admin-only: override restrictions with a recorded reason (FR03)
+    override: overrideSchema.nullable().optional(),
   })
   .refine((v) => new Date(v.ends_at).getTime() > new Date(v.starts_at).getTime(), {
     message: 'End time must be after start time',
@@ -201,3 +208,26 @@ export const organisationPricingSchema = z
   })
   .refine((v) => v.arrangement_type !== 'rate' || !!v.pricing_model, { message: 'Choose how the rate is charged', path: ['pricing_model'] })
   .refine((v) => v.arrangement_type !== 'percentage' || v.value <= 10_000, { message: 'A percentage cannot exceed 100%', path: ['value'] });
+
+// ------------------------- Availability rules (FR03) ----------------------
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:mm');
+const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
+
+export const availabilityRuleSchema = z
+  .object({
+    resource_id: z.string().min(1),
+    rule_type: z.enum(['closed', 'open']),
+    days_of_week: z.array(z.number().int().min(0).max(6)).min(1).max(7),
+    start_time: hhmm,
+    end_time: hhmm,
+    valid_from: ymd.nullable().optional(),
+    valid_to: ymd.nullable().optional(),
+    label: z.string().trim().max(120).nullable().optional(),
+    is_active: z.boolean().default(true),
+  })
+  .refine((v) => !v.valid_from || !v.valid_to || v.valid_to >= v.valid_from, { message: 'The season must end after it starts', path: ['valid_to'] });
+
+export const restrictionsSchema = z.object({
+  min_notice_minutes: z.number().int().min(0).max(525_600).nullable(),
+  max_advance_days: z.number().int().min(1).max(3650).nullable(),
+});

@@ -11,6 +11,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | `0004_organisations.sql` | FR01 Organisations, memberships & invitations |
 | `0005_pricing_engine.sql` | FR02 Advanced pricing engine |
 | `0006_organisation_pricing.sql` | FR14 Organisation-specific pricing |
+| `0007_availability_rules.sql` | FR03 Advanced availability rules |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -196,3 +197,44 @@ off everything").
 view, add, disable or remove arrangements and see their periods. Customers see
 the result in their quote when booking on the organisation's behalf. Changes
 never alter existing bookings.
+
+## FR03 – Advanced availability rules
+
+**Data.** Resources gain `min_notice_minutes` and `max_advance_days`.
+`availability_rules` holds recurring rules per resource: *closed* ("Scout
+meetings, Mon–Fri 18:00–21:00") or *open* (opening hours), days of the week,
+UK wall-clock start/end times, an optional season (`valid_from`/`valid_to`), a
+customer-facing label and an active flag. `availability_overrides` records
+every rule an administrator overrode, with who, why and when.
+
+**Evaluation** (`src/shared/availability-rules.ts`, pure and unit tested) runs
+on every availability check and every booking create, server-side:
+
+- times are UK local, so a 18:00 rule stays 18:00 across BST changes;
+- an end time at or before the start runs past midnight (22:00–07:00);
+- once a resource has any open rule, a booking must fall entirely within its
+  opening windows (adjacent windows merge, so 09:00–13:00 plus 13:00–17:00
+  allows 12:00–14:00);
+- closed rules propagate exactly like Release 1 closures: one on the Whole
+  Venue blocks every space, and one on a space blocks the Whole Venue. Opening
+  hours stay on the resource they are set on.
+
+The public availability endpoint returns `reason: "restricted"` with each
+violated rule's message, which the booking form shows and uses to disable
+submission. Resource pages list the rules.
+
+**Overrides.** Admins with `availability.manage` creating a booking for a
+customer see the restriction and can enter a reason to override it. The API
+only overrides the restriction kinds named in the request, and records one
+`availability_overrides` row per overridden rule in the same atomic batch as
+the booking. Exceptional closures and clashing bookings can never be
+overridden. Booking details show the override history to administrators.
+
+**Decisions.**
+
+- Rule edits never change existing bookings (same as closures in Release 1).
+- Minimum notice and advance window are per resource with no global default;
+  blank means no limit (simplest of: per resource, global, or per category).
+- Rules are managed under Admin → Resources (*Recurring availability rules*,
+  and *Booking limits* per resource) rather than on a new page.
+

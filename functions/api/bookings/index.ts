@@ -57,6 +57,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     return error('You can only book on behalf of an organisation you belong to', 403);
   }
 
+  // Overriding restrictions needs availability.manage and is recorded.
+  if (parsed.data.override && !can(user, 'availability.manage')) {
+    return error('Only authorised administrators can override booking restrictions', 403);
+  }
+
   const result = await createBookingAtomic({
     env,
     userId: customerId,
@@ -65,11 +70,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     endsAt: parsed.data.ends_at,
     actorId: user.id,
     organisationId,
+    override: parsed.data.override ?? null,
   });
 
   if (!result.ok) {
     const status = result.code === 'conflict' ? 409 : result.code === 'resource_not_found' ? 404 : 400;
-    return error(result.message, status, { code: result.code });
+    return error(result.message, status, { code: result.code, violations: result.violations });
   }
 
   // Load details for the confirmation email.
