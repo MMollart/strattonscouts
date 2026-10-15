@@ -8,6 +8,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | Migration | Feature |
 | --- | --- |
 | `0003_admin_roles.sql` | FR08 Advanced admin roles & permissions |
+| `0004_organisations.sql` | FR01 Organisations, memberships & invitations |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -65,3 +66,56 @@ these permissions.
   `CHECK` constraint to roll back the batch. Chose (c) where several rows must
   change together; it relies on D1 running each batch as one transaction and is
   reused by recurring bookings and amendments.
+
+## FR01 – Organisation management & invitations
+
+**Data.** `organisations` (name, type, pricing category, contact email,
+encrypted contact phone), `organisation_memberships` (`manager` | `member`) and
+`organisation_invitations`. Bookings gain nullable `organisation_id` and
+`created_by`; Release 1 bookings keep `organisation_id = NULL` and remain
+personal bookings.
+
+**Screens.** *Organisations* in the main navigation lists the user's
+organisations and creates new ones (the creator becomes Organisation Manager).
+The organisation page shows details, members, invitations and the
+organisation's bookings. Admins see all organisations at `/admin/organisations`.
+
+**Invitations.** A manager enters an email address; the server generates a
+32-byte random token, stores only its SHA-256 hash, and emails
+`/invitations/<token>`. The link page lets an existing user sign in or a new
+user register and then accept or decline. Rules enforced server-side:
+
+- the signed-in user's email must equal the invited address;
+- tokens are single-use (status guard on the `UPDATE`, membership inserted in
+  the same batch only if this request claimed it);
+- expiry is configurable (`invitation_expiry_days`, default 7, in Settings);
+- managers can revoke pending invitations;
+- a partial unique index allows one pending invitation per organisation and
+  address;
+- invitations only create organisation memberships, never platform roles.
+
+**Membership rules.** Managers invite, remove, promote and demote; members may
+leave. Removing or demoting the last manager is refused by a guarded batch,
+including under concurrent requests.
+
+**Organisation bookings.** The booking form has a *Booking for* choice
+(personal or one of the user's organisations). An organisation booking uses the
+organisation's pricing category, stores `organisation_id`, keeps the booking
+member as the customer (`user_id`) and records the submitter in `created_by`.
+Every member can see the organisation's bookings (My Bookings and the
+organisation page); the booking member and the organisation's managers can
+cancel them.
+
+### Decisions
+
+- *Organisation roles storage:* (a) reuse `user_roles`, (b) a role column on
+  `organisation_memberships`, (c) separate org role tables. Chose (b): it keeps
+  organisation permissions completely separate from platform permissions with
+  the least schema.
+- *Duplicate active invitations:* (a) application check, (b) unique index on
+  (org, email), (c) partial unique index on pending invitations. Chose (c):
+  race-free, and old invitations stay as history. Stale pending invitations
+  are marked `expired` before a new one is created.
+- *Invitation link for someone who is not signed in:* the link page shows the
+  organisation and a masked address; the full address is shown only to the
+  signed-in recipient.

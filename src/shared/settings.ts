@@ -16,6 +16,7 @@ export interface SettingDefinition {
 
 export const SETTING_DEFINITIONS: SettingDefinition[] = [
   { key: 'venue_name', label: 'Venue name', type: 'text', default: 'Stratton Scouts', help: 'Used in emails as {{ venue_name }}.' },
+  { key: 'invitation_expiry_days', label: 'Organisation invitation expiry (days)', type: 'integer', default: '7', min: 1, max: 90 },
   { key: 'contact_email', label: 'Contact email', type: 'email', default: 'bookings@strattonscouts.example', help: 'Shown to customers in emails as {{ contact_email }}.' },
 ];
 

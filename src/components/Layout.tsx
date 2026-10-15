@@ -14,6 +14,7 @@ export function Header() {
       {user ? (
         <>
           <NavItem to="/my-bookings" label="My Bookings" onClick={() => setOpen(false)} />
+          <NavItem to="/organisations" label="Organisations" onClick={() => setOpen(false)} />
           <NavItem to="/account" label="My Account" onClick={() => setOpen(false)} />
           {isAdmin && <NavItem to="/admin" label="Admin" onClick={() => setOpen(false)} />}
           <button className="btn-secondary" onClick={() => { void logout(); setOpen(false); }}>

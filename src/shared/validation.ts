@@ -44,6 +44,8 @@ export const createBookingSchema = z
     ends_at: isoDateTime,
     // admin-only: create on behalf of a customer
     on_behalf_of_user_id: z.string().min(1).optional(),
+    // book on behalf of an organisation the customer belongs to (FR01)
+    organisation_id: z.string().min(1).nullable().optional(),
   })
   .refine((v) => new Date(v.ends_at).getTime() > new Date(v.starts_at).getTime(), {
     message: 'End time must be after start time',
@@ -95,4 +97,30 @@ export const adminUserUpdateSchema = z.object({
 
 export const adminRoleUpdateSchema = z.object({
   role: z.enum(ADMIN_ROLES).nullable(),
+});
+
+// ------------------------- Organisations (FR01) ---------------------------
+export const organisationRoleSchema = z.enum(['manager', 'member']);
+export type OrganisationRole = z.infer<typeof organisationRoleSchema>;
+
+export const organisationSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  organisation_type_id: z.string().min(1),
+  pricing_category_id: z.string().min(1),
+  contact_email: z.string().trim().email().max(200),
+  contact_phone: z.string().trim().min(5).max(40),
+});
+export type OrganisationInput = z.infer<typeof organisationSchema>;
+
+export const invitationCreateSchema = z.object({
+  email: z.string().trim().email().max(200),
+  role: organisationRoleSchema.default('member'),
+});
+
+export const invitationResponseSchema = z.object({
+  action: z.enum(['accept', 'decline']),
+});
+
+export const membershipUpdateSchema = z.object({
+  role: organisationRoleSchema,
 });

@@ -20,6 +20,8 @@ interface BookingDetail {
   unit_price_pence: number;
   total_amount_pence: number;
   created_at: string;
+  organisation_name: string | null;
+  can_manage: boolean;
 }
 
 function fmt(iso: string): string {
@@ -53,7 +55,7 @@ export default function BookingDetails() {
   if (!data) return null;
 
   const isUpcoming = new Date(data.starts_at).getTime() > Date.now();
-  const canCancel = (data.status === 'confirmed' || data.status === 'pending_approval') && (can('bookings.manage') || isUpcoming);
+  const canCancel = (data.status === 'confirmed' || data.status === 'pending_approval') && data.can_manage && (can('bookings.manage') || isUpcoming);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -69,6 +71,7 @@ export default function BookingDetails() {
       <div className="card mt-6 space-y-3">
         <Row label="When" value={`${fmt(data.starts_at)} — ${fmt(data.ends_at)}`} />
         <Row label="Customer" value={data.customer_name} />
+        {data.organisation_name && <Row label="Organisation" value={data.organisation_name} />}
         {data.customer_email && <Row label="Email" value={data.customer_email} />}
         <Row label="Pricing model" value={data.pricing_model} />
         <Row label="Total" value={formatGBP(data.total_amount_pence)} bold />

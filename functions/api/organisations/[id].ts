@@ -1,0 +1,44 @@
+import type { Env } from '../../_lib/http';
+import { error, json, now } from '../../_lib/http';
+import { can, getAuthUser } from '../../_lib/auth';
+import { encryptAtRest } from '../../_lib/crypto';
+import { parseBody } from '../../_lib/request';
+import { getMembershipRole } from '../../_lib/organisations';
+import { loadOrganisation } from '../../_lib/org-views';
+import { organisationSchema } from '@shared/validation';
+
+// Organisation details for its members (and administrators).
+export const onRequestGet: PagesFunction<Env> = async ({ env, request, params }) => {
+  const user = await getAuthUser(env, request);
+  if (!user) return error('Not authenticated', 401);
+  const id = String(params.id);
+  const role = await getMembershipRole(env, id, user.id);
+  if (!role && !can(user, 'bookings.view')) return error('Not authorised', 403);
+  const org = await loadOrganisation(env, id, { includeInvitations: role === 'manager' });
+  if (!org) return error('Organisation not found', 404);
+  return json({ ...org, my_role: role });
+};
+
+// Organisation Managers: update the organisation's details.
+export const onRequestPut: PagesFunction<Env> = async ({ env, request, params }) => {
+  const user = await getAuthUser(env, request);
+  if (!user) return error('Not authenticated', 401);
+  const id = String(params.id);
+  if ((await getMembershipRole(env, id, user.id)) !== 'manager') return error('Only an Organisation Manager can do this', 403);
+  const input = await parseBody(request, organisationSchema);
+  if (input instanceof Response) return input;
+  const [type, cat] = await env.DB.batch([
+    env.DB.prepare('SELECT id FROM organisation_types WHERE id = ?').bind(input.organisation_type_id),
+    env.DB.prepare('SELECT id FROM pricing_categories WHERE id = ?').bind(input.pricing_category_id),
+  ]);
+  if (!type.results.length) return error('Invalid organisation type', 400);
+  if (!cat.results.length) return error('Invalid pricing category', 400);
+  const phone = await encryptAtRest(input.contact_phone, env.DATA_ENCRYPTION_KEY ?? '');
+  await env.DB.prepare(
+    `UPDATE organisations SET name = ?, organisation_type_id = ?, pricing_category_id = ?, contact_email = ?, contact_phone_encrypted = ?, updated_at = ?
+     WHERE id = ?`,
+  )
+    .bind(input.name, input.organisation_type_id, input.pricing_category_id, input.contact_email.toLowerCase(), phone, now(), id)
+    .run();
+  return json({ ok: true });
+};

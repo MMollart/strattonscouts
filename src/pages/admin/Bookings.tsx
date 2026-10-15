@@ -25,6 +25,8 @@ interface AdminBookingRow {
   customer_name: string;
   customer_email: string;
   customer_phone: string | null;
+  organisation_id: string | null;
+  organisation_name: string | null;
 }
 
 interface ResourceRow { id: string; name: string; is_active: boolean; }
@@ -143,6 +145,9 @@ export default function AdminBookings() {
                       {b.customer_name} · <a className="underline" href={`mailto:${b.customer_email}`}>{b.customer_email}</a>
                       {b.customer_phone && <> · <a className="underline" href={`tel:${b.customer_phone}`}>{b.customer_phone}</a></>}
                     </p>
+                    {b.organisation_name && (
+                      <p className="text-sm"><Link className="font-bold text-scout-purple" to={`/organisations/${b.organisation_id}`}>{b.organisation_name}</Link></p>
+                    )}
                     <p className="text-xs text-gray-500">
                       Ref {b.reference} · {formatLondon(b.starts_at)} to {formatLondon(b.ends_at)} · {formatGBP(b.total_amount_pence)}
                     </p>

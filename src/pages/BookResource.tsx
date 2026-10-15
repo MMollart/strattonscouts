@@ -13,6 +13,7 @@ import {
   useAvailability,
   windowToIso,
 } from '../components/BookingWindowFields';
+import type { MyOrganisation } from './Organisations';
 
 interface ResourceDetail {
   id: string;
@@ -44,12 +45,15 @@ export default function BookResource() {
   const { user } = useAuth();
   const { data: resource, loading, error } = useApi<ResourceDetail>(`/resources/${slug}`, [slug]);
   const { data: categories } = useApi<Category[]>('/categories');
+  const { data: organisations } = useApi<MyOrganisation[]>('/organisations');
+  const [organisationId, setOrganisationId] = useState<string>(() => params.get('organisation') ?? '');
+  const organisation = organisations?.find((o) => o.id === organisationId);
 
   const [win, setWin] = useState<BookingWindow>(() => initialWindow(params));
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const myCategory = categories?.find((c) => c.id === user?.pricing_category_id);
+  const myCategory = categories?.find((c) => c.id === (organisation ? organisation.pricing_category_id : user?.pricing_category_id));
   const myPrice = resource?.prices.find((p) => myCategory && p.category === myCategory.name);
   const iso = useMemo(() => windowToIso(win), [win]);
   const availability = useAvailability(resource?.id, iso);
@@ -80,6 +84,7 @@ export default function BookResource() {
         resource_id: resource.id,
         starts_at: iso.startsAt,
         ends_at: iso.endsAt,
+        organisation_id: organisation?.id ?? null,
       });
       navigate(`/bookings/${booking.id}`);
     } catch (e) {
@@ -103,6 +108,16 @@ export default function BookResource() {
       )}
 
       <div className="card mt-6 space-y-4">
+        {organisations && organisations.length > 0 && (
+          <div>
+            <label className="label" htmlFor="book-as">Booking for</label>
+            <select id="book-as" className="input" value={organisationId} onChange={(e) => setOrganisationId(e.target.value)}>
+              <option value="">Myself (personal booking)</option>
+              {organisations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+            {organisation && <p className="mt-1 text-xs text-gray-500">Priced at {organisation.name}&apos;s rates and visible to its members.</p>}
+          </div>
+        )}
         <BookingWindowFields value={win} onChange={setWin} minDate={londonToday()} />
         {!iso && <p className="text-sm text-scout-red">The end must be after the start.</p>}
         {availability !== 'idle' && (
@@ -116,7 +131,7 @@ export default function BookResource() {
 
         <div className="rounded-xl bg-scout-off-white p-4">
           <div className="flex items-center justify-between">
-            <span>Your category</span>
+            <span>{organisation ? 'Organisation category' : 'Your category'}</span>
             <span className="font-bold">{myCategory?.label ?? '—'}</span>
           </div>
           <div className="mt-2 flex items-center justify-between text-lg">

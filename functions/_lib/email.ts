@@ -7,7 +7,8 @@ export type EmailTemplate =
   | 'booking_approved'
   | 'booking_rejected'
   | 'booking_cancelled'
-  | 'password_reset';
+  | 'password_reset'
+  | 'organisation_invitation';
 
 interface TemplateDef {
   subject: string;
@@ -36,6 +37,10 @@ const TEMPLATES: Record<EmailTemplate, TemplateDef> = {
   booking_cancelled: {
     subject: 'Your booking {{ booking_reference }} has been cancelled',
     body: 'Hi {{ customer_name }},\n\nYour booking for {{ resource_name }} on {{ booking_date }} has been cancelled.\nReference: {{ booking_reference }}\n\nThank you,\nStratton Scouts',
+  },
+  organisation_invitation: {
+    subject: '{{ inviter_name }} has invited you to join {{ organisation_name }}',
+    body: 'Hello,\n\n{{ inviter_name }} has invited you to join {{ organisation_name }} on the {{ venue_name }} booking site as an {{ invitation_role }}.\n\nAccept or decline the invitation here:\n{{ invitation_url }}\n\nThis invitation expires on {{ invitation_expiry }}. If you were not expecting it, you can ignore this email.',
   },
   password_reset: {
     subject: 'Reset your Stratton Scouts password',

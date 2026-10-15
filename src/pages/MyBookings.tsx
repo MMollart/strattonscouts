@@ -12,6 +12,9 @@ interface BookingRow {
   ends_at: string;
   status: string;
   total_amount_pence: number;
+  organisation_name: string | null;
+  booked_by: string;
+  is_mine: boolean;
 }
 
 function formatRange(startsAt: string, endsAt: string): string {
@@ -50,7 +53,10 @@ export default function MyBookings() {
                 <div>
                   <p className="font-black">{b.resource_name}</p>
                   <p className="text-sm text-gray-600">{formatRange(b.starts_at, b.ends_at)}</p>
-                  <p className="text-xs text-gray-400">Ref {b.reference}</p>
+                  <p className="text-xs text-gray-400">
+                    Ref {b.reference}
+                    {b.organisation_name && <> · {b.organisation_name}{!b.is_mine && <> · booked by {b.booked_by}</>}</>}
+                  </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="font-bold">{formatGBP(b.total_amount_pence)}</span>

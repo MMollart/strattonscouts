@@ -16,6 +16,8 @@ export interface CreateBookingParams {
   startsAt: string;
   endsAt: string;
   actorId: string; // who is performing the action (customer or admin)
+  /** Book on behalf of this organisation; the caller has checked membership. */
+  organisationId?: string | null;
 }
 
 export type CreateBookingResult =
@@ -56,11 +58,16 @@ export async function createBookingAtomic(
   if (!resource) return { ok: false, code: 'resource_not_found', message: 'Resource not found' };
   if (!resource.is_active) return { ok: false, code: 'inactive', message: 'Resource is not available' };
 
-  // Customer category + price snapshot.
-  const user = await env.DB.prepare('SELECT pricing_category_id FROM users WHERE id = ?')
-    .bind(params.userId)
-    .first<{ pricing_category_id: string }>();
-  if (!user) return { ok: false, code: 'resource_not_found', message: 'Customer not found' };
+  // Customer category + price snapshot. Organisation bookings use the
+  // organisation's category.
+  const user = params.organisationId
+    ? await env.DB.prepare('SELECT pricing_category_id FROM organisations WHERE id = ?')
+        .bind(params.organisationId)
+        .first<{ pricing_category_id: string }>()
+    : await env.DB.prepare('SELECT pricing_category_id FROM users WHERE id = ?')
+        .bind(params.userId)
+        .first<{ pricing_category_id: string }>();
+  if (!user) return { ok: false, code: 'resource_not_found', message: params.organisationId ? 'Organisation not found' : 'Customer not found' };
 
   const price = await env.DB.prepare(
     'SELECT amount_pence, is_free FROM resource_pricing WHERE resource_id = ? AND category_id = ?',
@@ -89,8 +96,8 @@ export async function createBookingAtomic(
   const ts = now();
 
   const insertBooking = env.DB.prepare(
-    `INSERT INTO bookings (id, reference, user_id, resource_id, starts_at, ends_at, status, category_id, pricing_model, unit_price_pence, total_amount_pence, approved_by, cancelled_by, created_at, updated_at)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?
+    `INSERT INTO bookings (id, reference, user_id, resource_id, starts_at, ends_at, status, category_id, pricing_model, unit_price_pence, total_amount_pence, approved_by, cancelled_by, created_at, updated_at, organisation_id, created_by)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?
      WHERE NOT EXISTS (${CONFLICTING_BOOKING_SQL})
        AND NOT EXISTS (${OVERLAPPING_CLOSURE_SQL})`,
   ).bind(
@@ -107,6 +114,8 @@ export async function createBookingAtomic(
     totalPence,
     ts,
     ts,
+    params.organisationId ?? null,
+    params.actorId,
     params.resourceId,
     params.resourceId,
     params.resourceId,
