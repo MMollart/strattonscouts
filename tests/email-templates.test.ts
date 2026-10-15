@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { renderEmail, unknownParams, TEMPLATE_DEFINITIONS } from '@shared/email-templates';
+import { renderEmail, unknownParams, SAMPLE_PARAMS, TEMPLATE_DEFINITIONS } from '@shared/email-templates';
 import type { Env } from '../functions/_lib/http';
 import { addAdmin, addUser, createTestEnv } from './helpers/d1';
 import { call, sessionFor } from './helpers/http';
-import { retryFailedEmails, sendEmail } from '../functions/_lib/email';
+import { loadTemplate, retryFailedEmails, sendEmail } from '../functions/_lib/email';
 import * as templatesApi from '../functions/api/admin/email-templates/index';
 import * as templateApi from '../functions/api/admin/email-templates/[key]';
 import * as previewApi from '../functions/api/admin/email-templates/[key]/preview';
@@ -28,10 +28,29 @@ describe('renderEmail (FR06)', () => {
     expect(custom.html).toContain('<h1>&quot;Hall&quot;</h1>');
   });
 
+  it('wraps every email in the branded layout, with the logo only once one is set', () => {
+    const def = TEMPLATE_DEFINITIONS.find((t) => t.key === 'booking_request_received')!;
+    const params = { ...SAMPLE_PARAMS, venue_name: 'Stratton Scouts', contact_email: 'hello@example.com', logo_url: '' };
+    const out = renderEmail(def, params);
+    expect(out.html).toMatch(/^<!doctype html>/);
+    expect(out.html).toContain('Awaiting approval');
+    expect(out.html).toContain('SS-ABC123');
+    expect(out.html).toContain('mailto:hello@example.com');
+    expect(out.html).not.toContain('<img');
+    expect(out.html).not.toContain('Logo goes here');
+    expect(out.html).toContain('We have received your request for Main Hall'); // inbox preview line
+    expect(renderEmail(def, params, { showLogoPlaceholder: true }).html).toContain('Logo goes here');
+    const logo = renderEmail(def, { ...params, logo_url: 'https://cdn.example/logo.png?a=1&b=2' }, { showLogoPlaceholder: true }).html;
+    expect(logo).toContain('<img src="https://cdn.example/logo.png?a=1&amp;b=2"');
+    expect(logo).not.toContain('Logo goes here');
+    // Plain-text-only templates get the layout too.
+    expect(renderEmail({ subject: 's', body_text: 'Hi\n\nThere' }, params).html).toContain('#PlaceToBelong');
+  });
+
   it('knows which parameters each template supports', () => {
     expect(unknownParams('booking_confirmation', '{{ booking_reference }} {{ venue_name }} {{ reset_url }} {{ typo }}')).toEqual(['reset_url', 'typo']);
     expect(unknownParams('password_reset', '{{ reset_url }}')).toEqual([]);
-    for (const t of TEMPLATE_DEFINITIONS) expect(unknownParams(t.key, t.subject, t.body_text)).toEqual([]);
+    for (const t of TEMPLATE_DEFINITIONS) expect(unknownParams(t.key, t.subject, t.body_text, t.body_html)).toEqual([]);
   });
 });
 
@@ -82,6 +101,12 @@ describe('email templates against D1 (FR06)', () => {
     expect((await db.prepare('SELECT subject, booking_reference FROM email_events WHERE booking_id = ?').bind(booking.body.id).first())).toEqual({
       subject: 'Booked: Main Hall', booking_reference: booking.body.reference,
     });
+
+    // A saved version with no HTML sends its text, not the default HTML.
+    expect(preview.body.html).toContain('Logo goes here');
+    expect((await loadTemplate(env, 'booking_approved')).body_html).toBe(TEMPLATE_DEFINITIONS.find((t) => t.key === 'booking_approved')!.body_html);
+    await call(templateApi.onRequestPut, { env, cookie: admin, method: 'PUT', params: { key: 'booking_approved' }, body: { ...body, body_html: null } });
+    expect((await loadTemplate(env, 'booking_approved')).body_html).toBeNull();
 
     expect((await call(templateApi.onRequestDelete, { env, cookie: admin, method: 'DELETE', params: { key: 'booking_confirmation' } })).status).toBe(200);
     const reset = await call(templatesApi.onRequestGet, { env, cookie: admin });

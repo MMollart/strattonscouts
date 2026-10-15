@@ -52,7 +52,7 @@ export default function AdminSettings() {
               max={d.max}
               value={values[d.key] ?? ''}
               onChange={(e) => setValues((v) => ({ ...v, [d.key]: e.target.value }))}
-              required
+              required={!d.optional}
             />
             {d.help && <p className="mt-1 text-xs text-gray-500">{d.help}</p>}
           </div>

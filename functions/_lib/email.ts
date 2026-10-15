@@ -14,7 +14,7 @@ export async function loadTemplate(env: Env, key: EmailTemplateKey): Promise<{ s
   return {
     subject: row?.subject ?? def?.subject ?? '',
     body_text: row?.body_text ?? def?.body_text ?? '',
-    body_html: row?.body_html ?? null,
+    body_html: row ? row.body_html : def?.body_html ?? null,
     // Required templates are always sent.
     is_enabled: def?.required ? true : row ? !!row.is_enabled : true,
   };
@@ -26,6 +26,7 @@ export async function commonParams(env: Env, to: string): Promise<Record<string,
     customer_email: to,
     venue_name: await getSetting(env, 'venue_name'),
     contact_email: await getSetting(env, 'contact_email'),
+    logo_url: await getSetting(env, 'email_logo_url'),
     payment_instructions: await getSetting(env, 'payment_instructions'),
   };
 }

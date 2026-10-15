@@ -15,5 +15,5 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
   const input = await parseBody(request, emailTestSchema);
   if (input instanceof Response) return input;
   const values = { ...(await commonParams(env, SAMPLE_PARAMS.customer_email)), ...SAMPLE_PARAMS };
-  return json({ ...renderEmail(input, values), unknown: unknownParams(def.key, input.subject, input.body_text, input.body_html) });
+  return json({ ...renderEmail(input, values, { showLogoPlaceholder: true }), unknown: unknownParams(def.key, input.subject, input.body_text, input.body_html) });
 };
