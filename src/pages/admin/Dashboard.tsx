@@ -33,6 +33,7 @@ export default function AdminDashboard() {
         <h1 className="text-3xl">Administration</h1>
         <nav className="flex flex-wrap gap-2 text-sm">
           <Link to="/admin/bookings" className="btn-secondary">Bookings</Link>
+          <Link to="/admin/calendar" className="btn-secondary">Calendar</Link>
           <Link to="/admin/resources" className="btn-secondary">Resources</Link>
           <Link to="/admin/pricing" className="btn-secondary">Pricing &amp; conflicts</Link>
           <Link to="/admin/users" className="btn-secondary">Users</Link>

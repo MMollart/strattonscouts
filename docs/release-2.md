@@ -16,6 +16,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | `0009_recurring_bookings.sql` | FR05 Recurring bookings |
 | `0010_booking_amendments.sql` | FR12 Customer booking management & amendments |
 | `0011_email_templates.sql` | FR06 Email templates & history |
+| *(none)* | FR09 Admin calendar (reads existing tables) |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -410,3 +411,30 @@ or password reset emails, whose links are single-use secrets.
 **Payment reminder.** Admins with `bookings.manage` can send one from a
 confirmed, chargeable booking's page. Payment itself remains out of scope.
 
+## FR09 – Consolidated admin calendar
+
+**Views.** Admin → Calendar shows every resource on one calendar in day, week
+or month view, in UK time, with weeks starting on Monday. The day and week
+views draw bookings on a time grid (06:00 to midnight); bookings that run
+past midnight continue on the next day and are marked as such. The month view
+lists each day's bookings compactly. *Today*, previous and next move by the
+current view. Phones open on the day view, larger screens on the week view.
+
+**Filters.** Resources (each with its own colour), status, organisation and
+customer, plus *Include cancelled and expired*. Status is shown by the
+booking's border (solid confirmed, dashed awaiting approval, dotted
+provisional, faded and struck through for inactive) so colour stays free for the resource.
+Recurring bookings carry a ↻ marker, and resource closures appear hatched.
+
+**Acting from the calendar.** Clicking a booking opens a panel with its
+details, links to the booking, customer, organisation and repeating series,
+and *Approve* (or *Confirm* for a provisional hold) buttons for admins with `bookings.manage`.
+Admins with `bookings.create` can click an empty slot in day or week view to
+open *Book for a customer* pre-filled with that resource and time; viewers
+get a read-only calendar. Every action goes through the existing endpoints, so
+the same validation and permission checks apply.
+
+**Data.** No new tables. `GET /api/admin/bookings` gains `resource_ids`
+(comma-separated), `user_id` and `active_only=1` filters, returns
+`resource_id` and `series_id`, and allows up to 2000 rows so a month of every
+resource loads in one request.

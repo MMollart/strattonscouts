@@ -205,20 +205,24 @@ export default function AdminBookings() {
   );
 }
 
-function BookForCustomer({
+/** Book on behalf of a customer; also opened from the admin calendar with a slot (FR09). */
+export function BookForCustomer({
   resources,
   onClose,
   onCreated,
+  initial,
 }: {
   resources: ResourceRow[];
   onClose: () => void;
   onCreated: () => void;
+  initial?: { resourceId: string; window: BookingWindow };
 }) {
   const { data: customers, loading, error: loadError } = useApi<CustomerRow[]>('/admin/users');
   const [filter, setFilter] = useState('');
   const [customerId, setCustomerId] = useState('');
-  const [resourceId, setResourceId] = useState(resources[0]?.id ?? '');
+  const [resourceId, setResourceId] = useState(initial?.resourceId ?? resources[0]?.id ?? '');
   const [win, setWin] = useState<BookingWindow>(() => {
+    if (initial) return initial.window;
     const today = londonToday();
     return { startDate: today, startTime: '10:00', endDate: today, endTime: '12:00' };
   });

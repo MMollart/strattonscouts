@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
@@ -23,6 +23,9 @@ export default function AdminUsers() {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
+  const [params] = useSearchParams();
+  const [filter, setFilter] = useState(() => params.get('q') ?? '');
+  const shown = rows.filter((u) => `${u.full_name} ${u.email}`.toLowerCase().includes(filter.trim().toLowerCase()));
 
   useEffect(() => { if (data) setRows(data); }, [data]);
 
@@ -58,9 +61,15 @@ export default function AdminUsers() {
 
       {actionError && <div className="mt-4"><ErrorState message={actionError} /></div>}
 
+      <div className="mt-4 max-w-md">
+        <label className="label" htmlFor="users-filter">Find a user</label>
+        <input id="users-filter" className="input" placeholder="Name or email" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      </div>
+
       <div className="mt-6 space-y-2">
         {rows.length === 0 && <EmptyState title="No registered users yet" />}
-        {rows.map((u) => {
+        {rows.length > 0 && shown.length === 0 && <EmptyState title="No users match" />}
+        {shown.map((u) => {
           return (
             <div key={u.id} className="card flex flex-wrap items-center justify-between gap-3">
               <div>
