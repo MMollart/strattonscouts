@@ -60,6 +60,18 @@ describe('Office 365 email via Microsoft Graph', () => {
     expect(requests.filter((r) => r.url.includes('login')).length).toBe(2);
   });
 
+  it("records Microsoft's reason when sign-in is refused", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'invalid_client',
+      error_description: "AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID.\r\nTrace ID: abc\r\nCorrelation ID: def",
+      error_codes: [7000215],
+    }), { status: 401 })));
+    await sendEmail(env, { to: 'u1@example.com', template: 'booking_cancelled', dedupeKey: 's', params: {} });
+    const r = await db.prepare('SELECT status, error, next_attempt_at FROM email_events WHERE dedupe_key = ?').bind('s').first<Record<string, unknown>>();
+    expect(r).toMatchObject({ status: 'failed', next_attempt_at: null });
+    expect(r?.error).toBe('Office 365 sign-in refused (401) invalid_client: AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID.');
+  });
+
   it('records a configuration error without retrying', async () => {
     stub([]);
     env.MS_CLIENT_ID = undefined;

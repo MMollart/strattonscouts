@@ -96,7 +96,10 @@ async function graphAccessToken(env: Env): Promise<string> {
   if (!res.ok) {
     // A wrong or expired secret will not fix itself; an outage might.
     const temporary = res.status === 429 || res.status >= 500;
-    throw temporary ? new Error(`Office 365 sign-in responded ${res.status}`) : new GraphConfigError(`Office 365 sign-in refused (${res.status}); check the app registration and client secret`);
+    const detail = await signInErrorDetail(res);
+    throw temporary
+      ? new Error(`Office 365 sign-in responded ${res.status}${detail}`)
+      : new GraphConfigError(`Office 365 sign-in refused (${res.status})${detail || '; check the app registration and client secret'}`);
   }
   const body = (await res.json()) as { access_token: string; expires_in: number };
   graphToken = { key, token: body.access_token, expiresAt: Date.now() + body.expires_in * 1000 };
@@ -104,6 +107,22 @@ async function graphAccessToken(env: Env): Promise<string> {
 }
 
 class GraphConfigError extends Error {}
+
+/**
+ * Microsoft's own reason for a refused sign-in, such as "invalid_client:
+ * AADSTS7000215: Invalid client secret provided...", without the trace and
+ * correlation IDs it appends. Empty when the body has none.
+ */
+async function signInErrorDetail(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: string; error_description?: string };
+    const description = (body.error_description ?? '').split(/\r?\n|Trace ID:/)[0].trim();
+    const detail = [body.error, description].filter(Boolean).join(': ');
+    return detail ? ` ${detail.slice(0, 400)}` : '';
+  } catch {
+    return '';
+  }
+}
 
 /** Send through the EMAIL_FROM mailbox with Microsoft Graph sendMail. */
 async function deliverViaGraph(env: Env, to: string, email: RenderedEmail): Promise<DeliveryResult> {
