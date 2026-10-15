@@ -15,6 +15,7 @@ interface BookingRow {
   organisation_name: string | null;
   booked_by: string;
   is_mine: boolean;
+  series_id: string | null;
 }
 
 function formatRange(startsAt: string, endsAt: string): string {
@@ -56,6 +57,7 @@ export default function MyBookings() {
                   <p className="text-xs text-gray-400">
                     Ref {b.reference}
                     {b.organisation_name && <> · {b.organisation_name}{!b.is_mine && <> · booked by {b.booked_by}</>}</>}
+                    {b.series_id && <> · repeating booking</>}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

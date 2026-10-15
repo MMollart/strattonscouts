@@ -16,7 +16,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   if (!user) return error('Not authenticated', 401);
   const rows = await env.DB.prepare(
     `SELECT b.id, b.reference, b.resource_id, r.name AS resource_name, b.starts_at, b.ends_at,
-            ${effectiveStatusSql('b')} AS status, b.expires_at, b.total_amount_pence, b.created_at, b.organisation_id, o.name AS organisation_name,
+            ${effectiveStatusSql('b')} AS status, b.expires_at, b.series_id, b.total_amount_pence, b.created_at, b.organisation_id, o.name AS organisation_name,
             u.full_name AS booked_by, (b.user_id = ?) AS is_mine
      FROM bookings b
      JOIN resources r ON r.id = b.resource_id

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../lib/useApi';
 import { api, ApiError } from '../lib/api';
 import { Spinner, ErrorState, StatusBadge } from '../components/ui';
@@ -24,6 +24,7 @@ interface BookingDetail {
   organisation_name: string | null;
   can_manage: boolean;
   expires_at: string | null;
+  series_id: string | null;
   base_amount_pence: number | null;
   discount_pence: number;
   discount_label: string | null;
@@ -78,6 +79,12 @@ export default function BookingDetails() {
         <Row label="When" value={`${fmt(data.starts_at)} — ${fmt(data.ends_at)}`} />
         <Row label="Customer" value={data.customer_name} />
         {data.organisation_name && <Row label="Organisation" value={data.organisation_name} />}
+        {data.series_id && (
+          <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+            <span className="text-gray-500">Recurring booking</span>
+            <Link to={`/series/${data.series_id}`} className="font-bold text-scout-purple">View all dates</Link>
+          </div>
+        )}
         {data.customer_email && <Row label="Email" value={data.customer_email} />}
         <Row label="Pricing model" value={data.pricing_model} />
         {data.discount_pence > 0 && (

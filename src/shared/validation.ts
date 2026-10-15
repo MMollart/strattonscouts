@@ -239,3 +239,57 @@ export const restrictionsSchema = z.object({
 });
 
 export const bookingExpirySchema = z.object({ expires_at: isoDateTime });
+
+// FR05 recurring bookings
+const recurrenceFields = {
+  resource_id: z.string().min(1),
+  organisation_id: z.string().min(1).nullable().optional(),
+  on_behalf_of_user_id: z.string().min(1).optional(),
+  frequency: z.enum(['daily', 'weekly', 'fortnightly', 'monthly']),
+  monthly_mode: z.enum(['day_of_month', 'nth_weekday']).default('day_of_month'),
+  start_date: ymd,
+  start_time: hhmm,
+  end_time: hhmm,
+  until_date: ymd.nullable().optional(),
+  count: z.number().int().min(2).max(104).nullable().optional(),
+};
+
+const recurrenceRefinements = <T extends z.ZodTypeAny>(schema: T) =>
+  schema
+    .refine((v: { until_date?: string | null; count?: number | null }) => !!v.until_date || !!v.count, {
+      message: 'Choose an end date or a number of occurrences',
+      path: ['until_date'],
+    })
+    .refine((v: { until_date?: string | null; start_date: string }) => !v.until_date || v.until_date >= v.start_date, {
+      message: 'The end date must be on or after the start date',
+      path: ['until_date'],
+    })
+    .refine((v: { start_time: string; end_time: string }) => v.start_time !== v.end_time, {
+      message: 'The end time must differ from the start time',
+      path: ['end_time'],
+    });
+
+export const recurrenceSchema = recurrenceRefinements(z.object(recurrenceFields));
+export const seriesCreateSchema = recurrenceRefinements(
+  z.object({
+    ...recurrenceFields,
+    // Dates the customer chose to leave out, e.g. because they clash (§6.4).
+    exclude_dates: z.array(ymd).max(104).default([]),
+  }),
+);
+export type RecurrenceInput = z.infer<typeof recurrenceSchema>;
+
+export const seriesCancelSchema = z.object({
+  scope: z.enum(['all', 'future']),
+  // 'future': this occurrence and every later one
+  from_booking_id: z.string().min(1).optional(),
+});
+
+export const seriesAmendSchema = z.object({
+  scope: z.enum(['one', 'future']),
+  booking_id: z.string().min(1),
+  start_time: hhmm,
+  end_time: hhmm,
+  resource_id: z.string().min(1).optional(),
+  override: overrideSchema.nullable().optional(),
+});

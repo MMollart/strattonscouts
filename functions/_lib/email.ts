@@ -10,6 +10,7 @@ export type EmailTemplate =
   | 'password_reset'
   | 'organisation_invitation'
   | 'provisional_booking'
+  | 'booking_amended'
   | 'provisional_expired';
 
 interface TemplateDef {
@@ -39,6 +40,10 @@ const TEMPLATES: Record<EmailTemplate, TemplateDef> = {
   booking_cancelled: {
     subject: 'Your booking {{ booking_reference }} has been cancelled',
     body: 'Hi {{ customer_name }},\n\nYour booking for {{ resource_name }} on {{ booking_date }} has been cancelled.\nReference: {{ booking_reference }}\n\nThank you,\nStratton Scouts',
+  },
+  booking_amended: {
+    subject: 'Your booking {{ booking_reference }} has been changed',
+    body: 'Hi {{ customer_name }},\n\nYour booking has been changed. It is now for {{ resource_name }} on {{ booking_date }} ({{ booking_start_time }}–{{ booking_end_time }}).\nTotal: {{ booking_cost }}\nReference: {{ booking_reference }}\n\nThank you,\nStratton Scouts',
   },
   provisional_booking: {
     subject: 'Your provisional booking {{ booking_reference }} is held until {{ expiry_date }}',

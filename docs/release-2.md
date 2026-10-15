@@ -13,6 +13,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | `0006_organisation_pricing.sql` | FR14 Organisation-specific pricing |
 | `0007_availability_rules.sql` | FR03 Advanced availability rules |
 | `0008_provisional_bookings.sql` | FR04 Provisional bookings & automatic expiry |
+| `0009_recurring_bookings.sql` | FR05 Recurring bookings |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -181,7 +182,7 @@ resource, or a *percentage* / *fixed* discount on the standard category rate
 for one resource or all resources, each with effective dates, an active flag
 and internal notes. Bookings record `organisation_pricing_id`.
 
-**Precedence** (applied in `loadOrganisationArrangement` and `computePrice`):
+**Precedence** (applied in `quoteFromContext` and `computePrice`):
 
 1. organisation rate or free use for the resource;
 2. organisation discount for the resource, then an all-resources organisation
@@ -285,4 +286,48 @@ npm run scheduler:deploy   # wrangler deploy --config workers/scheduler/wrangler
 When email sending is configured, give the Worker the same `EMAIL_PROVIDER`,
 `EMAIL_FROM` and `EMAIL_API_KEY` as the Pages project
 (`npx wrangler secret put EMAIL_API_KEY --config workers/scheduler/wrangler.toml --env production`).
+
+## FR05 – Recurring bookings
+
+**Data.** `recurrence_series` stores the requested pattern (frequency,
+monthly mode, first date, UK start/end times, end date or count, and the
+dates the customer chose to leave out). Each occurrence is an ordinary
+booking with `series_id`, so pricing, approval, availability, cancellation
+and history behave exactly as for single bookings.
+
+**Patterns** (`src/shared/recurrence.ts`): daily, weekly, fortnightly and
+monthly, ending on a date or after a number of bookings (at most 104).
+Monthly repeats either on the same date (months without that date, such as
+31 February, are skipped) or on the same weekday position ("first Monday",
+"last Friday"). Times are UK wall-clock, so 19:00 stays 19:00 across BST.
+An end time at or before the start runs into the next morning.
+
+**Review and submit.** *Repeat this booking* on the booking form shows every
+date with its price or the reason it is unavailable (past, closure, clash
+through the conflict matrix, availability rule or advance limit, no price),
+and the total. If any date is unavailable the customer either changes the
+pattern or explicitly ticks *Remove these dates and continue*. The API
+re-validates on submit and refuses (409, with every date's status) unless
+each unavailable date is in `exclude_dates`. All bookings in the series are
+written in one guarded batch: each uses the same conditional insert as a
+single booking, and the batch rolls back if any of them lost a race, so a
+series is never partially created. Each date is priced at the rate effective
+on that date. One email covers the whole series.
+
+**Management.** `/series/:id` lists every date. Customers (and organisation
+managers) can cancel one upcoming date, a date and every later one, or the
+whole series. Administrators with `bookings.manage` can also change the time
+(and optionally the resource) of one date or of a date and every later one.
+Every changed date is revalidated, repriced and recorded as an `amended`
+event, all-or-nothing (`functions/_lib/amend.ts`, which FR12 also uses).
+
+**Decisions.**
+
+- Rules, busy periods and prices are loaded once per series rather than per
+  date, so a 104-date series stays well inside D1's per-request query limits.
+  The pricing engine was refactored into `loadPricingContext` +
+  `quoteFromContext` for this, and single-booking quotes use the same code.
+- Provisional holds and restriction overrides apply to single bookings only;
+  an admin can override a single date afterwards by changing it.
+- Changing future dates keeps each date and applies the new times.
 

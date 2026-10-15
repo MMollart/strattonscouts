@@ -15,6 +15,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Account from './pages/Account';
 import MyBookings from './pages/MyBookings';
+import SeriesDetail from './pages/SeriesDetail';
 import BookingDetails from './pages/BookingDetails';
 import BookResource from './pages/BookResource';
 import AdminDashboard from './pages/admin/Dashboard';
@@ -60,6 +61,7 @@ export default function App() {
           <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
           <Route path="/my-bookings" element={<RequireAuth><MyBookings /></RequireAuth>} />
           <Route path="/bookings/:id" element={<RequireAuth><BookingDetails /></RequireAuth>} />
+          <Route path="/series/:id" element={<RequireAuth><SeriesDetail /></RequireAuth>} />
           <Route path="/organisations" element={<RequireAuth><Organisations /></RequireAuth>} />
           <Route path="/organisations/:id" element={<RequireAuth><OrganisationDetail /></RequireAuth>} />
           <Route path="/invitations/:token" element={<Invitation />} />

@@ -37,33 +37,6 @@ export function toArrangement(row: OrganisationPricingRow): OrganisationArrangem
 }
 
 /**
- * The single organisation arrangement that applies to a resource at a time
- * (FR14 §12.3): a resource-specific rate or free use first, then a
- * resource-specific discount, then an all-resources discount. Within each,
- * the newest effective arrangement wins. Arrangements never stack.
- */
-export async function loadOrganisationArrangement(
-  env: Env,
-  args: { organisationId: string; resourceId: string; at: string },
-): Promise<OrganisationArrangement | null> {
-  const row = await env.DB.prepare(
-    `SELECT * FROM organisation_pricing
-     WHERE organisation_id = ? AND is_active = 1 AND (resource_id = ? OR resource_id IS NULL)
-       AND effective_from <= ? AND (effective_to IS NULL OR effective_to > ?)
-     ORDER BY CASE
-                WHEN resource_id IS NOT NULL AND arrangement_type IN ('rate', 'free') THEN 0
-                WHEN resource_id IS NOT NULL THEN 1
-                ELSE 2
-              END,
-              effective_from DESC, updated_at DESC
-     LIMIT 1`,
-  )
-    .bind(args.organisationId, args.resourceId, args.at, args.at)
-    .first<OrganisationPricingRow>();
-  return row ? toArrangement(row) : null;
-}
-
-/**
  * Another active arrangement for the same organisation and resource scope
  * whose period overlaps. Used to keep one arrangement per resource and period
  * (rates/free use and discounts are checked separately, since a

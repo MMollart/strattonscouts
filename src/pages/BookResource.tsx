@@ -15,6 +15,7 @@ import {
 import type { MyOrganisation } from './Organisations';
 import { useQuote } from '../lib/useQuote';
 import { PriceSummary } from '../components/PriceSummary';
+import { RecurringBooking } from '../components/RecurringBooking';
 
 interface ResourceDetail {
   id: string;
@@ -55,6 +56,7 @@ export default function BookResource() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [provisional, setProvisional] = useState(false);
+  const [repeat, setRepeat] = useState(false);
 
   const myCategory = categories?.find((c) => c.id === (organisation ? organisation.pricing_category_id : user?.pricing_category_id));
   const iso = useMemo(() => windowToIso(win), [win]);
@@ -127,6 +129,15 @@ export default function BookResource() {
           <p className="mt-2 text-xs text-gray-500">This is the price you will be charged; it is fixed when you submit.</p>
         </div>
 
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} />
+          <span className="font-bold">Repeat this booking</span>
+        </label>
+
+        {repeat ? (
+          <RecurringBooking resourceId={resource.id} resourceName={resource.name} organisationId={organisation?.id ?? null} window={win} />
+        ) : (
+        <>
         <label className="flex items-start gap-2">
           <input type="checkbox" className="mt-1" checked={provisional} onChange={(e) => setProvisional(e.target.checked)} />
           <span>
@@ -143,6 +154,8 @@ export default function BookResource() {
         <button className="btn-primary w-full" onClick={submit} disabled={submitting || !quote || ['conflict', 'closure', 'inactive', 'restricted'].includes(availability.status)}>
           {submitting ? 'Submitting…' : provisional ? 'Hold provisionally' : resource.requires_approval ? 'Request booking' : 'Confirm booking'}
         </button>
+        </>
+        )}
       </div>
     </div>
   );
