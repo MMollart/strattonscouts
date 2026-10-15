@@ -11,8 +11,8 @@ function toHex(buf: ArrayBuffer | Uint8Array): string {
     .join('');
 }
 
-function fromHex(hex: string): Uint8Array {
-  const out = new Uint8Array(hex.length / 2);
+function fromHex(hex: string): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(new ArrayBuffer(hex.length / 2));
   for (let i = 0; i < out.length; i++) {
     out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   }
@@ -25,9 +25,9 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-function fromBase64(b64: string): Uint8Array {
+function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
+  const out = new Uint8Array(new ArrayBuffer(bin.length));
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }

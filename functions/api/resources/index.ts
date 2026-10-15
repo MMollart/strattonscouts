@@ -1,5 +1,5 @@
-import type { Env } from '../_lib/http';
-import { json } from '../_lib/http';
+import type { Env } from '../../_lib/http';
+import { json } from '../../_lib/http';
 
 // Public: list active resources with primary image key and category prices.
 export const onRequestGet: PagesFunction<Env> = async ({ env }) => {

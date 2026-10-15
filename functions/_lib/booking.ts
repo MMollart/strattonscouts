@@ -1,8 +1,8 @@
 import type { Env } from './http';
 import { newId, now, bookingReference } from './http';
-import { conflictingResourceIds, intervalsOverlap } from '@shared/availability';
+import { conflictingResourceIds } from '@shared/availability';
 import type { ConflictEdge } from '@shared/availability';
-import { calculateTotalPence } from '@shared/pricing';
+import { calculateTotalPence, intervalsOverlap } from '@shared/pricing';
 import type { BookingStatus, PricingModel } from '@shared/types';
 
 export interface CreateBookingParams {
