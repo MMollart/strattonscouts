@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ADMIN_ROLES } from './permissions';
+import { ASSET_SETTABLE_STATUSES } from './assets';
 
 // Categories are configurable (FR02); names are validated against the database.
 export const categoryNameSchema = z.string().trim().min(1).max(40);
@@ -324,4 +325,36 @@ export const emailTestSchema = z.object({
   subject: z.string().trim().min(1).max(200),
   body_text: z.string().trim().min(1).max(20_000),
   body_html: z.string().trim().max(50_000).nullable().optional(),
+});
+
+// FR07: physical assets.
+const optionalText = (max: number) =>
+  z.string().trim().max(max).nullish().transform((v) => (v ? v : null));
+
+export const assetTypeSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  description: optionalText(300),
+  sort_order: z.number().int().min(0).max(10_000).default(0),
+  is_active: z.boolean().default(true),
+});
+
+export const assetSchema = z.object({
+  asset_type_id: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+  description: optionalText(1000),
+  reference: optionalText(80),
+});
+
+export const assetUpdateSchema = assetSchema.extend({
+  status: z.enum(ASSET_SETTABLE_STATUSES).optional(),
+});
+
+export const assetAssignSchema = z.object({
+  user_id: z.string().min(1),
+  notes: optionalText(1000),
+});
+
+export const assetReturnSchema = z.object({
+  outcome: z.enum(['available', 'damaged', 'lost']).default('available'),
+  notes: optionalText(1000),
 });

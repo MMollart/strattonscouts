@@ -16,6 +16,7 @@ import ResetPassword from './pages/ResetPassword';
 import Account from './pages/Account';
 import MyBookings from './pages/MyBookings';
 import AdminCalendar from './pages/admin/Calendar';
+import AdminAssets from './pages/admin/Assets';
 import AdminEmails from './pages/admin/Emails';
 import SeriesDetail from './pages/SeriesDetail';
 import BookingDetails from './pages/BookingDetails';
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="/admin/pricing" element={<RequireAuth admin><AdminPricing /></RequireAuth>} />
           <Route path="/admin/admins" element={<RequireAuth admin permission="admins.manage"><AdminAdmins /></RequireAuth>} />
           <Route path="/admin/calendar" element={<RequireAuth admin><AdminCalendar /></RequireAuth>} />
+          <Route path="/admin/assets" element={<RequireAuth admin permission="assets.manage"><AdminAssets /></RequireAuth>} />
           <Route path="/admin/emails" element={<RequireAuth admin><AdminEmails /></RequireAuth>} />
           <Route path="/admin/settings" element={<RequireAuth admin permission="settings.manage"><AdminSettings /></RequireAuth>} />
 

@@ -3,6 +3,7 @@ import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/useApi';
 import { useAuth, type SessionUser } from '../lib/auth';
 import { Spinner } from '../components/ui';
+import { formatLondon } from '@shared/londonTime';
 
 interface Category { id: string; name: string; label: string; }
 
@@ -62,6 +63,8 @@ export default function Account() {
         </p>
       </div>
 
+      <OnLoan />
+
       <form className="card mt-6 space-y-4" onSubmit={submit}>
         <h2 className="text-xl">Contact details</h2>
         <div>
@@ -77,5 +80,32 @@ export default function Account() {
         <button className="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
       </form>
     </div>
+  );
+}
+
+interface LoanedAsset {
+  id: string;
+  name: string;
+  reference: string | null;
+  asset_type_name: string;
+  assigned_at: string;
+}
+
+/** Keys, fobs and equipment currently lent to the signed-in user (FR07). */
+function OnLoan() {
+  const { data } = useApi<LoanedAsset[]>('/assets');
+  if (!data || data.length === 0) return null;
+  return (
+    <section className="card mt-6" aria-labelledby="loan-heading">
+      <h2 id="loan-heading" className="text-xl">On loan to you</h2>
+      <ul className="mt-2 space-y-1 text-sm">
+        {data.map((a) => (
+          <li key={a.id}>
+            <strong>{a.name}</strong> ({a.asset_type_name}{a.reference ? `, ${a.reference}` : ''}) since {formatLondon(a.assigned_at, { dateStyle: 'medium' })}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs text-gray-500">Please return these to an administrator when you no longer need them.</p>
+    </section>
   );
 }

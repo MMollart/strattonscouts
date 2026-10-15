@@ -17,6 +17,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | `0010_booking_amendments.sql` | FR12 Customer booking management & amendments |
 | `0011_email_templates.sql` | FR06 Email templates & history |
 | *(none)* | FR09 Admin calendar (reads existing tables) |
+| `0012_assets.sql` | FR07 Physical asset management |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -438,3 +439,36 @@ the same validation and permission checks apply.
 (comma-separated), `user_id` and `active_only=1` filters, returns
 `resource_id` and `series_id`, and allows up to 2000 rows so a month of every
 resource loads in one request.
+
+## FR07 – Physical asset management
+
+**Register.** Admin → Assets (permission `assets.manage`, held by Super Admins
+and Booking Admins; Viewers cannot see it) lists every key, fob, card and item
+of loaned equipment with its type, serial or reference number, status and
+current holder, with filters by status and type and a search across name,
+reference and holder. Reference numbers are optional but unique (ignoring
+case) when given. Asset types are configurable under *Asset types*: Key fob,
+Physical key, Access card and Loaned equipment are seeded; a type can be
+renamed, reordered or retired, and retired types keep their assets but cannot
+be chosen for new ones.
+
+**Statuses.** Available, Assigned, Lost, Damaged and Retired. *Assigned* is set
+only by an assignment and cleared only by recording the return, so the history
+always matches the status. Administrators can otherwise change the status
+directly, for example to retire a fob or mark a lost key as found.
+
+**Assigning and returning.** Opening an asset shows *Assign to someone*
+(search for a registered user, optional notes) or, when it is on loan, *Record
+return* with an outcome: *Returned* (becomes available), *Returned damaged*
+or *Reported lost*. The *On loan* tab is the list of outstanding assignments.
+Lost and retired assets cannot be assigned; damaged ones can (decision: a
+scuffed fob still opens the door, and the form warns the administrator).
+Assignment checks the status, writes the history row and sets the status in
+one guarded batch, and a partial unique index on open assignments means an
+asset can never be with two people at once, even when two administrators
+act simultaneously.
+
+**History.** `asset_assignments` keeps every loan: who had it, who assigned it
+and when, who recorded the return and when, the outcome, and the notes from
+both ends. Rows are never deleted. Users see the items currently lent to them
+under My account → *On loan to you*.
