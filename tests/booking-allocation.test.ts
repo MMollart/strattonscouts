@@ -52,7 +52,7 @@ describe('booking allocation', () => {
     const r = await book('u1', 'res_main');
     expect(r).toMatchObject({ ok: true, status: 'confirmed', totalPence: 2000 });
     const publicPrice = await book('u2', 'res_small');
-    expect(publicPrice).toMatchObject({ ok: true, totalPence: 3000 });
+    expect(publicPrice).toMatchObject({ ok: true, totalPence: 2000 }); // full price 1000/h for public
   });
 
   it('enters Pending Approval and reserves the resource (AC14, AC15)', async () => {
@@ -151,7 +151,7 @@ describe('booking allocation', () => {
 
   it('keeps the agreed price when pricing changes later (AC19)', async () => {
     const r = await book('u1', 'res_main');
-    await db.prepare("UPDATE pricing_rates SET amount_pence = 9999 WHERE resource_id = 'res_main'").run();
+    await db.prepare("UPDATE base_rates SET amount_pence = 9999 WHERE resource_id = 'res_main'").run();
     const row = await db.prepare('SELECT total_amount_pence FROM bookings WHERE id = ?').bind(r.ok && r.bookingId).first<{ total_amount_pence: number }>();
     expect(row?.total_amount_pence).toBe(2000);
   });

@@ -24,7 +24,7 @@ function statements(sql: string): string[] {
  * in-memory database.
  */
 export async function createTestEnv(
-  opts: { stopBefore?: string } = {},
+  opts: { migratedPrices?: boolean; stopBefore?: string } = {},
 ): Promise<{ env: Env; db: D1Database; dispose: () => Promise<void>; applyRemaining: () => Promise<void> }> {
   const mf = new Miniflare({
     modules: true,
@@ -42,8 +42,26 @@ export async function createTestEnv(
     for (const sql of list) await db.batch(statements(sql).map((s) => db.prepare(s)));
   };
   await apply(now);
+  if (!opts.migratedPrices && cut === -1) await applyTestPrices(db);
   const env = { DB: db, ENVIRONMENT: 'test', APP_BASE_URL: 'http://localhost' } as unknown as Env;
   return { env, db, dispose: () => mf.dispose(), applyRemaining: () => apply(later) };
+}
+
+/**
+ * Round-number test prices: each resource's full (public) price is twice its
+ * seeded Scouts price, Scouts get 50% off and Community 25% off, so Scouts pay
+ * exactly the seeded Scouts prices (Main Hall £10/h, Small Hall £5/h, ...).
+ * Pass { migratedPrices: true } to test the prices migration 0014 derives.
+ */
+async function applyTestPrices(db: D1Database): Promise<void> {
+  await db.batch([
+    db.prepare(`UPDATE base_rates SET amount_pence = 2 * (
+      SELECT s.amount_pence FROM pricing_rates s
+      WHERE s.resource_id = base_rates.resource_id AND s.category_id = 'cat_scouts' AND s.pricing_model = base_rates.pricing_model
+      ORDER BY s.effective_from DESC LIMIT 1)
+      WHERE EXISTS (SELECT 1 FROM pricing_rates s WHERE s.resource_id = base_rates.resource_id AND s.category_id = 'cat_scouts')`),
+    db.prepare("UPDATE pricing_categories SET discount_bp = CASE id WHEN 'cat_scouts' THEN 5000 WHEN 'cat_community' THEN 2500 ELSE 0 END"),
+  ]);
 }
 
 /** Insert a customer in the given pricing category. */

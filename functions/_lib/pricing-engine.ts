@@ -1,5 +1,5 @@
 import type { Env } from './http';
-import { computePrice, type DiscountRule, type OrganisationArrangement, type PriceBreakdown, type RateRule } from '@shared/pricing';
+import { discountedAmount, computePrice, type DiscountRule, type OrganisationArrangement, type PriceBreakdown, type RateRule } from '@shared/pricing';
 import { toArrangement, type OrganisationPricingRow } from './organisation-pricing';
 
 export type QuoteResult =
@@ -21,6 +21,8 @@ interface Dated {
  */
 export interface PricingContext {
   categoryId: string;
+  /** The price group's discount off the full (public) price, in basis points. */
+  discountBp: number;
   rates: (RateRule & Dated)[];
   discounts: (DiscountRule & Dated)[];
   arrangements: (OrganisationPricingRow & { updated_at: string })[];
@@ -31,16 +33,20 @@ export async function loadPricingContext(
   args: { resourceId: string; userId: string; organisationId?: string | null },
 ): Promise<PricingContext | null> {
   const holder = args.organisationId
-    ? await env.DB.prepare('SELECT pricing_category_id FROM organisations WHERE id = ?').bind(args.organisationId).first<{ pricing_category_id: string }>()
-    : await env.DB.prepare('SELECT pricing_category_id FROM users WHERE id = ?').bind(args.userId).first<{ pricing_category_id: string }>();
+    ? await env.DB.prepare('SELECT h.pricing_category_id, pc.discount_bp FROM organisations h JOIN pricing_categories pc ON pc.id = h.pricing_category_id WHERE h.id = ?')
+        .bind(args.organisationId)
+        .first<{ pricing_category_id: string; discount_bp: number }>()
+    : await env.DB.prepare('SELECT h.pricing_category_id, pc.discount_bp FROM users h JOIN pricing_categories pc ON pc.id = h.pricing_category_id WHERE h.id = ?')
+        .bind(args.userId)
+        .first<{ pricing_category_id: string; discount_bp: number }>();
   if (!holder) return null;
   const categoryId = holder.pricing_category_id;
 
   const [rates, discounts, arrangements] = await env.DB.batch<Record<string, unknown>>([
     env.DB.prepare(
-      `SELECT id, pricing_model, amount_pence, is_active, effective_from, effective_to, updated_at FROM pricing_rates
-       WHERE resource_id = ? AND category_id = ? AND is_active = 1`,
-    ).bind(args.resourceId, categoryId),
+      `SELECT id, pricing_model, amount_pence, is_active, effective_from, effective_to, updated_at FROM base_rates
+       WHERE resource_id = ? AND is_active = 1`,
+    ).bind(args.resourceId),
     env.DB.prepare(
       `SELECT id, name AS label, discount_type, value, is_active, effective_from, effective_to, updated_at FROM pricing_discounts
        WHERE (resource_id IS NULL OR resource_id = ?) AND (category_id IS NULL OR category_id = ?) AND is_active = 1`,
@@ -52,6 +58,7 @@ export async function loadPricingContext(
   ]);
   return {
     categoryId,
+    discountBp: holder.discount_bp,
     rates: rates.results as unknown as PricingContext['rates'],
     discounts: discounts.results as unknown as PricingContext['discounts'],
     arrangements: args.organisationId ? (arrangements.results as unknown as PricingContext['arrangements']) : [],
@@ -78,7 +85,8 @@ export function quoteFromContext(ctx: PricingContext, startsAt: string, endsAt: 
   const at = startsAt;
   const rate = ctx.rates.filter(effectiveAt(at)).sort(newestFirst)[0];
   const breakdown = computePrice({
-    categoryRate: rate ? { id: rate.id, pricing_model: rate.pricing_model, amount_pence: rate.amount_pence } : null,
+    // The resource's base price, less the customer's price group discount.
+    categoryRate: rate ? { id: rate.id, pricing_model: rate.pricing_model, amount_pence: discountedAmount(rate.amount_pence, ctx.discountBp) } : null,
     generalDiscounts: ctx.discounts.filter(effectiveAt(at)).map(({ id, label, discount_type, value }) => ({ id, label, discount_type, value })),
     arrangement: arrangementAt(ctx.arrangements, at),
     startsAt,
@@ -90,7 +98,8 @@ export function quoteFromContext(ctx: PricingContext, startsAt: string, endsAt: 
 
 /**
  * Server-side price calculation (FR02 §3.4). Identifies the customer's (or
- * organisation's) pricing category, the rate effective at the booking start,
+ * organisation's) price group, the base rate effective at the booking start
+ * less that group's discount,
  * any organisation-specific arrangement and eligible discounts, and returns
  * the full breakdown.
  */

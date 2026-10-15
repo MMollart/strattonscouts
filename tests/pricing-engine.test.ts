@@ -65,7 +65,28 @@ describe('pricing engine against D1 (FR02)', () => {
     await dispose();
   });
 
-  it('migrates Release 1 prices into rates unchanged', async () => {
+  it('migrates to one full price per resource and a discount per group (0014)', async () => {
+    const migrated = await createTestEnv({ migratedPrices: true });
+    try {
+      // Public prices become the full prices, unchanged.
+      const main = await migrated.db.prepare("SELECT pricing_model, amount_pence FROM base_rates WHERE resource_id = 'res_main'").all();
+      expect(main.results).toEqual([{ pricing_model: 'hourly', amount_pence: 2500 }]);
+      // Each group's discount averages its old prices against the public ones.
+      const cats = await migrated.db.prepare('SELECT id, discount_bp FROM pricing_categories ORDER BY sort_order').all();
+      expect(cats.results).toEqual([
+        { id: 'cat_scouts', discount_bp: 5800 },
+        { id: 'cat_community', discount_bp: 3200 },
+        { id: 'cat_public', discount_bp: 0 },
+      ]);
+      await addUser(migrated.db, 'm1');
+      const q = await quotePrice(migrated.env, { resourceId: 'res_main', userId: 'm1', ...day });
+      expect(q).toMatchObject({ ok: true, breakdown: { unit_price_pence: 1050, total_pence: 3150 } });
+    } finally {
+      await migrated.dispose();
+    }
+  });
+
+  it('prices each group from the full price less its discount', async () => {
     const q = await quotePrice(env, { resourceId: 'res_main', userId: 'u1', ...day });
     expect(q).toMatchObject({ ok: true, breakdown: { pricing_model: 'hourly', unit_price_pence: 1000, total_pence: 3000 } });
     const res = await call(publicResource.onRequestGet, { env, params: { slug: 'main-hall' } });
@@ -76,9 +97,10 @@ describe('pricing engine against D1 (FR02)', () => {
     const cookie = await sessionFor(env, 'super');
     const add = await call(rates.onRequestPost, {
       env, cookie,
-      body: { resource_id: 'res_main', category_id: 'cat_scouts', pricing_model: 'fixed', amount_pence: 7000, effective_from: '2027-03-01T00:00:00Z', effective_to: '2027-04-01T00:00:00Z' },
+      body: { resource_id: 'res_main', pricing_model: 'fixed', amount_pence: 14000, effective_from: '2027-03-01T00:00:00Z', effective_to: '2027-04-01T00:00:00Z' },
     });
     expect(add.status).toBe(201);
+    // A full price of £140; Scouts pay half in the test prices.
     expect((await quotePrice(env, { resourceId: 'res_main', userId: 'u1', ...day }))).toMatchObject({ breakdown: { pricing_model: 'fixed', total_pence: 7000 } });
     // Outside the range the original rate applies.
     expect((await quotePrice(env, { resourceId: 'res_main', userId: 'u1', startsAt: '2027-04-02T10:00:00Z', endsAt: '2027-04-02T11:00:00Z' }))).toMatchObject({ breakdown: { pricing_model: 'hourly', total_pence: 1000 } });
@@ -97,14 +119,14 @@ describe('pricing engine against D1 (FR02)', () => {
     const booking = await createBookingAtomic({ env, userId: 'u1', resourceId: 'res_main', ...day, actorId: 'u1' });
     expect(booking).toMatchObject({ ok: true, totalPence: 2250 });
     const row = await db.prepare('SELECT base_amount_pence, discount_pence, discount_label, total_amount_pence, pricing_rate_id, pricing_discount_id, price_breakdown FROM bookings').first<Record<string, unknown>>();
-    expect(row).toMatchObject({ base_amount_pence: 3000, discount_pence: 750, discount_label: 'Spring offer', total_amount_pence: 2250, pricing_rate_id: 'rate_pr_main_s' });
+    expect(row).toMatchObject({ base_amount_pence: 3000, discount_pence: 750, discount_label: 'Spring offer', total_amount_pence: 2250, pricing_rate_id: 'rate_pr_main_p' });
     expect(JSON.parse(row!.price_breakdown as string)).toMatchObject({ quantity: 3, total_pence: 2250 });
   });
 
   it('never changes the agreed price of existing bookings', async () => {
     const b = await createBookingAtomic({ env, userId: 'u1', resourceId: 'res_main', ...day, actorId: 'u1' });
     const cookie = await sessionFor(env, 'super');
-    await call(rates.onRequestPost, { env, cookie, body: { resource_id: 'res_main', category_id: 'cat_scouts', pricing_model: 'hourly', amount_pence: 99999, effective_from: '2000-01-01T00:00:00Z' } });
+    await call(rates.onRequestPost, { env, cookie, body: { resource_id: 'res_main', pricing_model: 'hourly', amount_pence: 99999, effective_from: '2000-01-01T00:00:00Z' } });
     await call(discounts.onRequestPost, { env, cookie, body: { name: 'All', discount_type: 'percentage', value: 5000, effective_from: '2000-01-01T00:00:00Z' } });
     const row = await db.prepare('SELECT total_amount_pence FROM bookings WHERE id = ?').bind(b.ok && b.bookingId).first<{ total_amount_pence: number }>();
     expect(row?.total_amount_pence).toBe(3000);
@@ -118,7 +140,7 @@ describe('pricing engine against D1 (FR02)', () => {
   it('quotes over the API, including the zero-cost rate', async () => {
     const cookie = await sessionFor(env, 'u1');
     const admin = await sessionFor(env, 'super');
-    await call(rates.onRequestPost, { env, cookie: admin, body: { resource_id: 'res_kitchen', category_id: 'cat_scouts', pricing_model: 'free', amount_pence: 500, effective_from: '2000-01-01T00:00:00Z' } });
+    await call(rates.onRequestPost, { env, cookie: admin, body: { resource_id: 'res_kitchen', pricing_model: 'free', amount_pence: 500, effective_from: '2000-01-01T00:00:00Z' } });
     const res = await call(quote.onRequestPost, { env, cookie, body: { resource_id: 'res_kitchen', starts_at: day.startsAt, ends_at: day.endsAt } });
     expect(res.body).toMatchObject({ pricing_model: 'free', total_pence: 0, category_id: 'cat_scouts' });
     expect((await call(quote.onRequestPost, { env, body: { resource_id: 'res_kitchen', starts_at: day.startsAt, ends_at: day.endsAt } })).status).toBe(401);
@@ -136,7 +158,7 @@ describe('pricing engine against D1 (FR02)', () => {
   it('validates rates and discounts', async () => {
     const cookie = await sessionFor(env, 'super');
     expect((await call(discounts.onRequestPost, { env, cookie, body: { name: 'Too much', discount_type: 'percentage', value: 10001, effective_from: '2027-01-01T00:00:00Z' } })).status).toBe(400);
-    expect((await call(rates.onRequestPost, { env, cookie, body: { resource_id: 'res_main', category_id: 'cat_scouts', pricing_model: 'hourly', amount_pence: -1, effective_from: '2027-01-01T00:00:00Z' } })).status).toBe(400);
-    expect((await call(rates.onRequestPost, { env, cookie, body: { resource_id: 'res_main', category_id: 'cat_scouts', pricing_model: 'hourly', amount_pence: 1, effective_from: '2027-02-01T00:00:00Z', effective_to: '2027-01-01T00:00:00Z' } })).status).toBe(400);
+    expect((await call(rates.onRequestPost, { env, cookie, body: { resource_id: 'res_main', pricing_model: 'hourly', amount_pence: -1, effective_from: '2027-01-01T00:00:00Z' } })).status).toBe(400);
+    expect((await call(rates.onRequestPost, { env, cookie, body: { resource_id: 'res_main', pricing_model: 'hourly', amount_pence: 1, effective_from: '2027-02-01T00:00:00Z', effective_to: '2027-01-01T00:00:00Z' } })).status).toBe(400);
   });
 });

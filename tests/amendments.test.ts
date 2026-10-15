@@ -66,7 +66,7 @@ describe('customer booking amendments (FR12)', () => {
     expect(await bookingRow(id)).toMatchObject({ resource_id: 'res_main', total_amount_pence: 2000 });
 
     // Prices change after the request; the customer pays what they agreed.
-    await db.prepare("UPDATE pricing_rates SET amount_pence = 9999 WHERE id = 'rate_pr_small_s'").run();
+    await db.prepare("UPDATE base_rates SET amount_pence = 9999 WHERE id = 'rate_pr_small_p'").run();
 
     const pending = await call(adminList.onRequestGet, { env, cookie: admin, path: '/api/admin/amendments' });
     expect(pending.body).toHaveLength(1);

@@ -89,8 +89,10 @@ tests/                 Vitest suites (pricing, availability, booking concurrency
 
    The seed creates the three pricing categories (Scouts / Community / Public),
    the six resources (Whole Venue, Small Hall, Main Hall, Kitchen, Event Field,
-   Camping) and illustrative per-category prices. Migration 0015 puts every
-   resource under the Whole Venue; regroup them in Admin → Resources.
+   Camping) and illustrative prices. Migration 0014 turns those prices into one
+   full price per resource (the public price) and a discount per pricing
+   category, and migration 0015 puts every resource under the Whole Venue
+   (regroup them in Admin → Resources); see docs/release-2.md.
 
 4. **Run the frontend dev server**
 

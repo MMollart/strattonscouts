@@ -214,3 +214,17 @@ export const RATE_MODEL_LABEL: Record<RateModel, string> = {
 export function formatPercent(bp: number): string {
   return `${Number((bp / 100).toFixed(2))}%`;
 }
+
+/** A price group's price: the resource's base (public) price less the group's discount, to the nearest penny. */
+export function discountedAmount(basePence: number, discountBp: number): number {
+  const off = Math.min(10_000, Math.max(0, Math.trunc(discountBp)));
+  return Math.round((Math.max(0, Math.trunc(basePence)) * (10_000 - off)) / 10_000);
+}
+
+/** "Full price", "25% off" or "Free" for a group's discount. */
+export function describeDiscount(discountBp: number): string {
+  if (discountBp <= 0) return 'Full price';
+  if (discountBp >= 10_000) return 'Free';
+  const pct = discountBp / 100;
+  return `${Number.isInteger(pct) ? pct : pct.toFixed(2)}% off`;
+}

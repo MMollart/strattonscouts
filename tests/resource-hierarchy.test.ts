@@ -53,7 +53,7 @@ async function addGroup(name: string, slug: string): Promise<string> {
   expect(res.status).toBe(201);
   const ts = new Date().toISOString();
   await db
-    .prepare("INSERT INTO pricing_rates (id, resource_id, category_id, pricing_model, amount_pence, effective_from, created_at, updated_at) VALUES (?, ?, 'cat_scouts', 'hourly', 1000, '1970-01-01T00:00:00.000Z', ?, ?)")
+    .prepare("INSERT INTO base_rates (id, resource_id, pricing_model, amount_pence, effective_from, created_at, updated_at) VALUES (?, ?, 'hourly', 2000, '1970-01-01T00:00:00.000Z', ?, ?)")
     .bind(`p_${slug}`, res.body.id, ts, ts)
     .run();
   return res.body.id;

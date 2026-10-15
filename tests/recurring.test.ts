@@ -143,10 +143,10 @@ describe('recurring bookings against D1 (FR05)', () => {
   it('follows the resource approval setting and prices each date at its own effective rate', async () => {
     const start = firstTuesday();
     // Price rise from the third occurrence.
-    await db.prepare(`UPDATE pricing_rates SET effective_to = ? WHERE id = 'rate_pr_main_s'`).bind(fromLondon(addDays(start, 14), '00:00')).run();
+    await db.prepare(`UPDATE base_rates SET effective_to = ? WHERE id = 'rate_pr_main_p'`).bind(fromLondon(addDays(start, 14), '00:00')).run();
     await db.prepare(
-      `INSERT INTO pricing_rates (id, resource_id, category_id, pricing_model, amount_pence, effective_from, effective_to, is_active, created_at, updated_at)
-       VALUES ('rate_new', 'res_main', 'cat_scouts', 'hourly', 1200, ?, NULL, 1, ?, ?)`,
+      `INSERT INTO base_rates (id, resource_id, pricing_model, amount_pence, effective_from, effective_to, is_active, created_at, updated_at)
+       VALUES ('rate_new', 'res_main', 'hourly', 2400, ?, NULL, 1, ?, ?)`,
     ).bind(fromLondon(addDays(start, 14), '00:00'), new Date().toISOString(), new Date().toISOString()).run();
     const preview = await call(previewApi.onRequestPost, { env, cookie: customer, body: pattern(start) });
     expect(preview.body.occurrences.map((o: { price: { total_pence: number } }) => o.price.total_pence)).toEqual([2000, 2000, 2400, 2400]);
