@@ -6,9 +6,8 @@ pages_build_output_dir = "dist"
 # ---------------------------------------------------------------------------
 # Default / local development bindings
 # Development and production use ISOLATED Cloudflare resources (AC27).
-# Database IDs below are placeholders; replace with your own after running:
-#   wrangler d1 create strattonscouts-dev
-#   wrangler d1 create strattonscouts-prod
+# The D1 databases already exist (created 2026-10-15). The R2 buckets still need
+# creating once R2 is enabled on the account:
 #   wrangler r2 bucket create strattonscouts-resources-dev
 #   wrangler r2 bucket create strattonscouts-resources-prod
 # ---------------------------------------------------------------------------
@@ -16,7 +15,7 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "strattonscouts-dev"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "1349588d-ad18-42ba-9b7c-160b0d9843bd"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
@@ -34,7 +33,7 @@ APP_BASE_URL = "http://localhost:5173"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "strattonscouts-prod"
-database_id = "11111111-1111-1111-1111-111111111111"
+database_id = "bed80acb-3def-477d-9a47-8130031a5593"
 migrations_dir = "migrations"
 
 [[env.production.r2_buckets]]
