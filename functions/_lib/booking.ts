@@ -70,8 +70,8 @@ export function bookingInsertStatements(env: Env, d: BookingDraft): D1PreparedSt
     `INSERT INTO bookings (id, reference, user_id, resource_id, starts_at, ends_at, status, category_id, pricing_model,
                            unit_price_pence, total_amount_pence, approved_by, cancelled_by, created_at, updated_at,
                            organisation_id, created_by, base_amount_pence, discount_pence, discount_label,
-                           pricing_rate_id, pricing_discount_id, price_breakdown)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                           pricing_rate_id, pricing_discount_id, price_breakdown, organisation_pricing_id)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
      WHERE NOT EXISTS (${CONFLICTING_BOOKING_SQL})
        AND NOT EXISTS (${OVERLAPPING_CLOSURE_SQL})`,
   ).bind(
@@ -96,6 +96,7 @@ export function bookingInsertStatements(env: Env, d: BookingDraft): D1PreparedSt
     d.price.pricing_rate_id,
     d.price.pricing_discount_id,
     JSON.stringify(d.price),
+    d.price.organisation_pricing_id,
     d.resourceId,
     d.resourceId,
     d.resourceId,

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
-import { Spinner, ErrorState, EmptyState } from '../../components/ui';
+import { Spinner, ErrorState } from '../../components/ui';
 import { formatGBP, formatPercent, RATE_MODEL_LABEL, type RateModel } from '@shared/pricing';
 import { formatLondon, fromLondon, londonToday } from '@shared/londonTime';
 import { poundsToPence } from '../../lib/money';
@@ -85,9 +85,178 @@ export default function AdminPricing() {
   );
 }
 
-/** Placeholder until FR14 adds organisation-specific pricing. */
-function OrganisationPricingPanel(_props: { resources: ResourceRow[] }) {
-  return <EmptyState title="Organisation pricing">Organisation-specific arrangements are not available yet.</EmptyState>;
+interface ArrangementRow {
+  id: string; organisation_id: string; organisation_name: string; resource_id: string | null; resource_name: string | null;
+  arrangement_type: 'rate' | 'free' | 'percentage' | 'fixed_discount'; pricing_model: 'hourly' | 'nightly' | 'fixed' | null;
+  value: number; effective_from: string; effective_to: string | null; is_active: boolean; notes: string | null;
+}
+interface OrgOption { id: string; name: string; category_label: string; }
+
+function describeArrangement(a: ArrangementRow): string {
+  if (a.arrangement_type === 'free') return 'Free use';
+  if (a.arrangement_type === 'rate') return `Agreed rate ${formatGBP(a.value)} ${RATE_MODEL_LABEL[a.pricing_model ?? 'hourly']}`;
+  if (a.arrangement_type === 'percentage') return `${formatPercent(a.value)} off the standard rate`;
+  return `${formatGBP(a.value)} off the standard rate`;
+}
+
+/** FR14: organisation-specific pricing arrangements. */
+function OrganisationPricingPanel({ resources }: { resources: ResourceRow[] }) {
+  const { can } = useAuth();
+  const canEdit = can('pricing.manage');
+  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
+  const { data: orgs } = useApi<OrgOption[]>(`/admin/organisations?q=${encodeURIComponent(search)}`, [search]);
+  const [orgId, setOrgId] = useState('');
+  const { data: rows, setData } = useApi<ArrangementRow[]>(orgId ? `/admin/pricing/organisations?organisation_id=${orgId}` : null, [orgId]);
+  const fb = useFeedback();
+  const empty = { resource_id: '', arrangement_type: 'percentage' as ArrangementRow['arrangement_type'], pricing_model: 'hourly' as 'hourly' | 'nightly' | 'fixed', value: '', from: londonToday(), to: '', notes: '' };
+  const [draft, setDraft] = useState(empty);
+
+  async function reload() {
+    setData(await api.get<ArrangementRow[]>(`/admin/pricing/organisations?organisation_id=${orgId}`));
+  }
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    fb.clear();
+    let value = 0;
+    if (draft.arrangement_type === 'percentage') value = Math.round(Number(draft.value) * 100);
+    else if (draft.arrangement_type !== 'free') {
+      const p = poundsToPence(draft.value);
+      if (p === null) return fb.fail(null, 'Enter the amount in pounds, e.g. 12.50');
+      value = p;
+    }
+    if (!Number.isFinite(value) || value < 0) return fb.fail(null, 'Enter a valid amount');
+    try {
+      await api.post('/admin/pricing/organisations', {
+        organisation_id: orgId,
+        resource_id: draft.resource_id || null,
+        arrangement_type: draft.arrangement_type,
+        pricing_model: draft.arrangement_type === 'rate' ? draft.pricing_model : null,
+        value,
+        effective_from: dateToIso(draft.from),
+        effective_to: dateToIso(draft.to),
+        notes: draft.notes.trim() || null,
+      });
+      await reload();
+      setDraft(empty);
+      fb.ok('Arrangement added.');
+    } catch (err) {
+      fb.fail(err, 'Could not add the arrangement');
+    }
+  }
+
+  async function toggle(a: ArrangementRow) {
+    fb.clear();
+    try {
+      await api.put(`/admin/pricing/organisations/${a.id}`, { ...a, is_active: !a.is_active });
+      await reload();
+    } catch (err) {
+      fb.fail(err, 'Could not update the arrangement');
+    }
+  }
+
+  async function remove(a: ArrangementRow) {
+    if (!confirm('Remove this arrangement? Existing bookings keep their agreed price.')) return;
+    await api.del(`/admin/pricing/organisations/${a.id}`).catch((err) => fb.fail(err, 'Could not remove'));
+    await reload();
+  }
+
+  const needsResource = draft.arrangement_type === 'rate' || draft.arrangement_type === 'free';
+
+  return (
+    <section className="card mt-4">
+      <p className="text-sm text-gray-600">
+        Precedence: an organisation rate or free use for the resource, then an organisation discount on the standard category rate, then the
+        standard rate. Only one arrangement applies to a resource and period.
+      </p>
+      <form className="mt-4 flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); setSearch(q.trim()); }}>
+        <label className="sr-only" htmlFor="op-q">Search organisations</label>
+        <input id="op-q" className="input max-w-sm" placeholder="Search organisations" value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className="btn-secondary">Search</button>
+      </form>
+      <div className="mt-3 max-w-md">
+        <label className="label" htmlFor="op-org">Organisation</label>
+        <select id="op-org" className="input" value={orgId} onChange={(e) => setOrgId(e.target.value)}>
+          <option value="">Select an organisation ({orgs?.length ?? 0})</option>
+          {orgs?.map((o) => <option key={o.id} value={o.id}>{o.name} · {o.category_label}</option>)}
+        </select>
+      </div>
+
+      {orgId && (
+        <>
+          <div className="mt-4 space-y-2">
+            {rows?.length === 0 && <p className="text-sm text-gray-500">No arrangements. Standard category pricing applies.</p>}
+            {rows?.map((a) => (
+              <div key={a.id} className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3 ${a.is_active ? '' : 'opacity-50'}`}>
+                <div>
+                  <p className="font-bold">{a.resource_name ?? 'All resources'}: {describeArrangement(a)}</p>
+                  <p className="text-xs text-gray-500">{period(a.effective_from, a.effective_to)}{!a.is_active && ' (disabled)'}{a.notes && ` · ${a.notes}`}</p>
+                </div>
+                {canEdit && (
+                  <span className="flex gap-3 text-sm">
+                    <button className="text-scout-purple underline" onClick={() => toggle(a)}>{a.is_active ? 'Disable' : 'Enable'}</button>
+                    <button className="text-scout-red underline" onClick={() => remove(a)}>Remove</button>
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          {canEdit && (
+            <form className="mt-6 grid gap-3 border-t pt-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={add}>
+              <div>
+                <label className="label" htmlFor="op-type">Arrangement</label>
+                <select id="op-type" className="input" value={draft.arrangement_type} onChange={(e) => setDraft({ ...draft, arrangement_type: e.target.value as ArrangementRow['arrangement_type'] })}>
+                  <option value="percentage">Percentage discount</option>
+                  <option value="fixed_discount">Fixed discount</option>
+                  <option value="rate">Agreed rate</option>
+                  <option value="free">Free use</option>
+                </select>
+              </div>
+              <div>
+                <label className="label" htmlFor="op-res">Resource</label>
+                <select id="op-res" className="input" value={draft.resource_id} onChange={(e) => setDraft({ ...draft, resource_id: e.target.value })} required={needsResource}>
+                  {!needsResource && <option value="">All resources</option>}
+                  {needsResource && <option value="">Choose a resource</option>}
+                  {resources.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+              </div>
+              {draft.arrangement_type === 'rate' && (
+                <div>
+                  <label className="label" htmlFor="op-model">Charging</label>
+                  <select id="op-model" className="input" value={draft.pricing_model} onChange={(e) => setDraft({ ...draft, pricing_model: e.target.value as 'hourly' | 'nightly' | 'fixed' })}>
+                    <option value="hourly">Per hour</option>
+                    <option value="nightly">Per night</option>
+                    <option value="fixed">Fixed per booking</option>
+                  </select>
+                </div>
+              )}
+              {draft.arrangement_type !== 'free' && (
+                <div>
+                  <label className="label" htmlFor="op-value">{draft.arrangement_type === 'percentage' ? 'Percent off' : 'Amount (£)'}</label>
+                  <input id="op-value" className="input" inputMode="decimal" value={draft.value} onChange={(e) => setDraft({ ...draft, value: e.target.value })} required />
+                </div>
+              )}
+              <div>
+                <label className="label" htmlFor="op-from">Effective from</label>
+                <input id="op-from" type="date" className="input" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} required />
+              </div>
+              <div>
+                <label className="label" htmlFor="op-to">Until (optional)</label>
+                <input id="op-to" type="date" className="input" value={draft.to} min={draft.from} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label" htmlFor="op-notes">Notes (internal)</label>
+                <input id="op-notes" className="input" maxLength={500} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
+              </div>
+              <button className="btn-primary lg:col-span-4">Add arrangement</button>
+            </form>
+          )}
+        </>
+      )}
+      {fb.node}
+    </section>
+  );
 }
 
 function useFeedback() {

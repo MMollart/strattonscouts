@@ -10,6 +10,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | `0003_admin_roles.sql` | FR08 Advanced admin roles & permissions |
 | `0004_organisations.sql` | FR01 Organisations, memberships & invitations |
 | `0005_pricing_engine.sql` | FR02 Advanced pricing engine |
+| `0006_organisation_pricing.sql` | FR14 Organisation-specific pricing |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -169,3 +170,29 @@ entered in pounds and stored in pence.
   of use), so a price list "from 1 April" applies to stays from 1 April.
 - *Several matching discounts:* only the one giving the largest saving applies;
   discounts never stack, mirroring FR14's one-arrangement rule.
+
+## FR14 – Organisation-specific pricing
+
+**Data.** `organisation_pricing` arrangements per organisation: an agreed
+*rate* for one resource (with its own charging model), *free* use of one
+resource, or a *percentage* / *fixed* discount on the standard category rate
+for one resource or all resources, each with effective dates, an active flag
+and internal notes. Bookings record `organisation_pricing_id`.
+
+**Precedence** (applied in `loadOrganisationArrangement` and `computePrice`):
+
+1. organisation rate or free use for the resource;
+2. organisation discount for the resource, then an all-resources organisation
+   discount, applied to the standard category rate;
+3. the standard category rate with the best general discount.
+
+Only one organisation arrangement applies and it never stacks with general
+discounts. The admin API refuses a second active arrangement for the same
+organisation, resource scope and overlapping period (rates/free use and
+discounts are checked separately, so "free Small Hall" can coexist with "20%
+off everything").
+
+**Screens.** Admin → Pricing → *Organisation pricing*: search organisations,
+view, add, disable or remove arrangements and see their periods. Customers see
+the result in their quote when booking on the organisation's behalf. Changes
+never alter existing bookings.
