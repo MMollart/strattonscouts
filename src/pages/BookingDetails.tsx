@@ -44,6 +44,7 @@ export default function BookingDetails() {
   const { data, loading, error, setData } = useApi<BookingDetail>(`/bookings/${id}`, [id]);
   const [working, setWorking] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function cancel() {
     if (!data || !confirm('Cancel this booking? This cannot be undone.')) return;
@@ -54,6 +55,21 @@ export default function BookingDetails() {
       setData({ ...data, status: 'cancelled' });
     } catch (e) {
       setActionError(e instanceof ApiError ? e.message : 'Could not cancel booking');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function sendReminder() {
+    if (!data) return;
+    setWorking(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      await api.post(`/admin/bookings/${data.id}/reminder`);
+      setNotice('Payment reminder sent.');
+    } catch (e) {
+      setActionError(e instanceof ApiError ? e.message : 'Could not send the reminder');
     } finally {
       setWorking(false);
     }
@@ -138,6 +154,11 @@ export default function BookingDetails() {
           canRequest={data.can_manage && isUpcoming && ['confirmed', 'pending_approval', 'provisional'].includes(data.status)}
         />
       )}
+
+      {data.status === 'confirmed' && data.total_amount_pence > 0 && can('bookings.manage') && (
+        <button className="btn-secondary mt-6 mr-2" onClick={sendReminder} disabled={working}>Send payment reminder</button>
+      )}
+      {notice && <p className="mt-4 text-sm font-bold text-scout-green" role="status">{notice}</p>}
 
       {canCancel && (
         <button className="btn-danger mt-6" onClick={cancel} disabled={working}>

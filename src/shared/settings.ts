@@ -21,6 +21,11 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
     key: 'provisional_expiry_hours', label: 'Provisional booking hold (hours)', type: 'integer', default: '48', min: 1, max: 720,
     help: 'How long a provisional booking holds its resource unless the resource sets its own period.',
   },
+  {
+    key: 'payment_instructions', label: 'Payment instructions', type: 'text',
+    default: 'Please pay by bank transfer. Contact us for the account details.',
+    help: 'Used in payment reminder emails as {{ payment_instructions }}.',
+  },
   { key: 'contact_email', label: 'Contact email', type: 'email', default: 'bookings@strattonscouts.example', help: 'Shown to customers in emails as {{ contact_email }}.' },
 ];
 

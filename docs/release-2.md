@@ -15,6 +15,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | `0008_provisional_bookings.sql` | FR04 Provisional bookings & automatic expiry |
 | `0009_recurring_bookings.sql` | FR05 Recurring bookings |
 | `0010_booking_amendments.sql` | FR12 Customer booking management & amendments |
+| `0011_email_templates.sql` | FR06 Email templates & history |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -366,4 +367,46 @@ emailed either way (*booking amended* / *change not approved*).
   change stands in for resource approval.
 - Only upcoming bookings can be changed by customers. Admins change series
   dates directly (FR05) using the same code.
+
+## FR06 – Advanced email template management
+
+**Templates.** Defaults for every email live in `src/shared/email-templates.ts`
+(booking request received, approved, rejected, confirmation, amendment,
+change not approved, cancellation, provisional booking, provisional expiry,
+payment reminder, organisation invitation, password reset). Admins with
+`email_templates.manage` edit them under Admin → Emails: subject, plain-text
+body, optional HTML body, parameter buttons that insert `{{ name }}` at the
+cursor, a live preview with example values, *Send test to me*, *Restore
+default*, and an on/off switch. A saved version is a row in `email_templates`;
+deleting it restores the default. Unknown parameters are refused on save so
+typos are caught. Invitation and password reset emails cannot be switched
+off, because the features depend on them.
+
+**Parameters.** Every email can use `customer_name`, `customer_email`,
+`venue_name` and `contact_email` (the last two from Settings); booking emails
+add `organisation_name`, `booking_reference`, `resource_name`,
+`booking_date`, `booking_start_time`, `booking_end_time`, `booking_cost` and
+`booking_status`; some templates add their own (for example `expiry_date`,
+`decision_note`, `payment_instructions`). Values are HTML-escaped in the HTML
+output and have line breaks removed in subjects, so names and notes typed by
+users cannot inject markup or headers. Every email is sent as both HTML and
+plain text.
+
+**Lifecycle.** Each booking event sends exactly one email: auto-confirmed
+bookings get *confirmation*, approval of a request gets *approved* (never
+both), confirming a provisional hold gets *confirmation*. Disabled templates
+are recorded in the history as *not sent* and are not sent later.
+
+**History and retries.** `email_events` now records the subject, booking
+reference, provider reference (Resend's id), sending time, attempts and
+retry state; Admin → Emails → *History* shows it with search and a status
+filter. Rate limits and provider errors (HTTP 429/5xx, network errors) are
+retried by the scheduler Worker after 5, 10, 20 and 40 minutes (5 attempts in
+all). Each retry claims the row with a status-guarded UPDATE and the provider
+gets an idempotency key, so retries never produce duplicates. Template
+parameters are kept only while a retry is pending, and never for invitation
+or password reset emails, whose links are single-use secrets.
+
+**Payment reminder.** Admins with `bookings.manage` can send one from a
+confirmed, chargeable booking's page. Payment itself remains out of scope.
 

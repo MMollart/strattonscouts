@@ -1,5 +1,6 @@
 import type { Env } from '../../../functions/_lib/http';
 import { expireProvisionalBookings } from '../../../functions/_lib/provisional';
+import { retryFailedEmails } from '../../../functions/_lib/email';
 
 /**
  * Scheduled Worker for Release 2 background jobs. Cloudflare Pages Functions
@@ -12,9 +13,13 @@ import { expireProvisionalBookings } from '../../../functions/_lib/provisional';
 export default {
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
-      expireProvisionalBookings(env).then((n) => {
-        if (n) console.log(`[scheduler] expired ${n} provisional booking(s)`);
-      }),
+      (async () => {
+        const expired = await expireProvisionalBookings(env);
+        if (expired) console.log(`[scheduler] expired ${expired} provisional booking(s)`);
+        // FR06: retry emails that failed for a temporary reason.
+        const retried = await retryFailedEmails(env);
+        if (retried) console.log(`[scheduler] re-sent ${retried} email(s)`);
+      })(),
     );
   },
 };

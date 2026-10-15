@@ -311,3 +311,17 @@ export const amendmentDecisionSchema = z.object({
   decision: z.enum(['approve', 'reject']),
   note: z.string().trim().max(1000).nullable().optional(),
 });
+
+// FR06 email templates
+export const emailTemplateSchema = z.object({
+  subject: z.string().trim().min(1).max(200),
+  body_text: z.string().trim().min(1).max(20_000),
+  body_html: z.string().trim().max(50_000).nullable().optional(),
+  is_enabled: z.boolean().default(true),
+});
+
+export const emailTestSchema = z.object({
+  subject: z.string().trim().min(1).max(200),
+  body_text: z.string().trim().min(1).max(20_000),
+  body_html: z.string().trim().max(50_000).nullable().optional(),
+});
