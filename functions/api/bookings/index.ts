@@ -17,7 +17,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   const rows = await env.DB.prepare(
     `SELECT b.id, b.reference, b.resource_id, r.name AS resource_name, b.starts_at, b.ends_at,
             ${effectiveStatusSql('b')} AS status, b.expires_at, b.series_id, b.total_amount_pence, b.created_at, b.organisation_id, o.name AS organisation_name,
-            u.full_name AS booked_by, (b.user_id = ?) AS is_mine
+            u.full_name AS booked_by, (b.user_id = ?) AS is_mine,
+            EXISTS (SELECT 1 FROM booking_amendments a WHERE a.booking_id = b.id AND a.status = 'pending') AS has_pending_amendment
      FROM bookings b
      JOIN resources r ON r.id = b.resource_id
      JOIN users u ON u.id = b.user_id
@@ -28,7 +29,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   )
     .bind(user.id, user.id, user.id)
     .all<Record<string, unknown>>();
-  return json(rows.results.map((r) => ({ ...r, is_mine: !!r.is_mine })));
+  return json(rows.results.map((r) => ({ ...r, is_mine: !!r.is_mine, has_pending_amendment: !!r.has_pending_amendment })));
 };
 
 // Create a booking (customer, or admin on behalf of a customer), personally or

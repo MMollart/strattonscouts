@@ -6,6 +6,7 @@ import { Spinner, ErrorState, StatusBadge } from '../components/ui';
 import { formatGBP } from '@shared/pricing';
 import { useAuth } from '../lib/auth';
 import { formatLondon } from '@shared/londonTime';
+import { AmendmentPanel } from '../components/AmendmentPanel';
 import { RESTRICTION_LABEL, type RestrictionKind } from '@shared/availability-rules';
 
 interface BookingDetail {
@@ -25,6 +26,7 @@ interface BookingDetail {
   can_manage: boolean;
   expires_at: string | null;
   series_id: string | null;
+  resource_id: string;
   base_amount_pence: number | null;
   discount_pence: number;
   discount_label: string | null;
@@ -129,6 +131,13 @@ export default function BookingDetails() {
       )}
 
       {actionError && <div className="mt-4"><ErrorState message={actionError} /></div>}
+
+      {(['confirmed', 'pending_approval', 'provisional'].includes(data.status) || data.status === 'cancelled') && (
+        <AmendmentPanel
+          booking={data}
+          canRequest={data.can_manage && isUpcoming && ['confirmed', 'pending_approval', 'provisional'].includes(data.status)}
+        />
+      )}
 
       {canCancel && (
         <button className="btn-danger mt-6" onClick={cancel} disabled={working}>

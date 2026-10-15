@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
+import { ChangeRequests } from './ChangeRequests';
 import { useQuote } from '../../lib/useQuote';
 import { PriceSummary } from '../../components/PriceSummary';
 import { Spinner, EmptyState, ErrorState, StatusBadge } from '../../components/ui';
@@ -127,6 +128,8 @@ export default function AdminBookings() {
       ) : (
         <button className="btn-primary mt-4" onClick={() => setCreating(true)}>Book for a customer</button>
       )}
+
+      <ChangeRequests onDecided={() => void load()} />
 
       <div className="card mt-6 grid gap-3 sm:grid-cols-3">
         <div>

@@ -11,6 +11,7 @@ export type EmailTemplate =
   | 'organisation_invitation'
   | 'provisional_booking'
   | 'booking_amended'
+  | 'booking_amendment_rejected'
   | 'provisional_expired';
 
 interface TemplateDef {
@@ -44,6 +45,10 @@ const TEMPLATES: Record<EmailTemplate, TemplateDef> = {
   booking_amended: {
     subject: 'Your booking {{ booking_reference }} has been changed',
     body: 'Hi {{ customer_name }},\n\nYour booking has been changed. It is now for {{ resource_name }} on {{ booking_date }} ({{ booking_start_time }}–{{ booking_end_time }}).\nTotal: {{ booking_cost }}\nReference: {{ booking_reference }}\n\nThank you,\nStratton Scouts',
+  },
+  booking_amendment_rejected: {
+    subject: 'Your change request for booking {{ booking_reference }} was not approved',
+    body: 'Hi {{ customer_name }},\n\nWe could not approve your requested change to booking {{ booking_reference }}. Your original booking for {{ resource_name }} on {{ booking_date }} ({{ booking_start_time }}–{{ booking_end_time }}) is unchanged.\n{{ decision_note }}\n\nThank you,\nStratton Scouts',
   },
   provisional_booking: {
     subject: 'Your provisional booking {{ booking_reference }} is held until {{ expiry_date }}',

@@ -14,6 +14,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | `0007_availability_rules.sql` | FR03 Advanced availability rules |
 | `0008_provisional_bookings.sql` | FR04 Provisional bookings & automatic expiry |
 | `0009_recurring_bookings.sql` | FR05 Recurring bookings |
+| `0010_booking_amendments.sql` | FR12 Customer booking management & amendments |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -330,4 +331,39 @@ event, all-or-nothing (`functions/_lib/amend.ts`, which FR12 also uses).
 - Provisional holds and restriction overrides apply to single bookings only;
   an admin can override a single date afterwards by changing it.
 - Changing future dates keeps each date and applies the new times.
+
+## FR12 – Customer booking management & amendments
+
+**My Bookings** shows personal bookings and those of every organisation the
+customer belongs to, with *Upcoming / Past / All* and a status filter, and a
+*change requested* marker. Booking details show the change history.
+
+**Requesting a change.** On an upcoming active booking, the customer (or an
+Organisation Manager for organisation bookings; members can only view)
+chooses *Request a change*, picks a new resource, date and times, and checks
+it. The server validates it exactly like a new booking, ignoring the booking
+itself so it can move within or overlapping its own slot, and returns the
+new price breakdown and the difference. Submitting stores a pending
+`booking_amendments` row with the quoted price. A partial unique index allows
+one pending request per booking. The original booking is untouched and stays
+reserved. The customer can withdraw a pending request, and cancelling the
+booking withdraws it automatically.
+
+**Decision** (Admin → Bookings → *Change requests*, `bookings.approve`).
+Approval revalidates availability and applies the change in one guarded
+batch: the booking's resource, times and price, its allocation row, an
+`amended` event recording before and after, and the request's status. If the
+new time has been taken meanwhile nothing changes and the admin is told.
+Rejection records who rejected it and an optional message. The customer is
+emailed either way (*booking amended* / *change not approved*).
+
+**Decisions.**
+
+- The customer pays the price quoted when they made the request, even if
+  prices change before approval (the alternative was re-pricing at approval,
+  which would charge a price the customer never saw).
+- The booking keeps its status on approval; the admin's approval of the
+  change stands in for resource approval.
+- Only upcoming bookings can be changed by customers. Admins change series
+  dates directly (FR05) using the same code.
 

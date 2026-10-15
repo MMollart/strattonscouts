@@ -293,3 +293,21 @@ export const seriesAmendSchema = z.object({
   resource_id: z.string().min(1).optional(),
   override: overrideSchema.nullable().optional(),
 });
+
+// FR12 customer booking amendments
+export const amendmentRequestSchema = z
+  .object({
+    resource_id: z.string().min(1),
+    starts_at: isoDateTime,
+    ends_at: isoDateTime,
+    note: z.string().trim().max(1000).nullable().optional(),
+  })
+  .refine((v) => new Date(v.ends_at).getTime() > new Date(v.starts_at).getTime(), {
+    message: 'End time must be after start time',
+    path: ['ends_at'],
+  });
+
+export const amendmentDecisionSchema = z.object({
+  decision: z.enum(['approve', 'reject']),
+  note: z.string().trim().max(1000).nullable().optional(),
+});

@@ -51,6 +51,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
       `INSERT INTO booking_events (id, booking_id, event_type, actor_id, detail, created_at)
        SELECT 'bev_' || lower(hex(randomblob(16))), id, 'cancelled', ?, ?, ? FROM bookings WHERE ${targetSql}`,
     ).bind(user.id, JSON.stringify({ series_id: id, scope: input.scope }), ts, id, from),
+    env.DB.prepare(
+      `UPDATE booking_amendments SET status = 'withdrawn', decided_by = ?, decided_at = ?, updated_at = ?
+       WHERE status = 'pending' AND booking_id IN (SELECT id FROM bookings WHERE ${targetSql})`,
+    ).bind(user.id, ts, ts, id, from),
     env.DB.prepare(`UPDATE bookings SET status = 'cancelled', cancelled_by = ?, updated_at = ? WHERE ${targetSql}`).bind(user.id, ts, id, from),
     env.DB.prepare(
       `UPDATE recurrence_series SET status = 'cancelled', updated_at = ?
