@@ -37,5 +37,18 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request, params })
       ).results
     : undefined;
 
-  return json({ ...booking, can_manage: access.canManage, ...(overrides ? { overrides } : {}) });
+  // The other resources booked in the same request (same customer, same time).
+  const group = booking.group_id
+    ? (
+        await env.DB.prepare(
+          `SELECT b.id, b.reference, r.name AS resource_name, ${effectiveStatusSql('b')} AS status, b.total_amount_pence
+           FROM bookings b JOIN resources r ON r.id = b.resource_id
+           WHERE b.group_id = ? AND b.user_id = ? ORDER BY r.name`,
+        )
+          .bind(booking.group_id, booking.user_id)
+          .all()
+      ).results
+    : undefined;
+
+  return json({ ...booking, can_manage: access.canManage, ...(overrides ? { overrides } : {}), ...(group ? { group } : {}) });
 };

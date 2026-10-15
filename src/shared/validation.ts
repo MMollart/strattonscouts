@@ -47,6 +47,8 @@ export const overrideSchema = z.object({
 export const createBookingSchema = z
   .object({
     resource_id: z.string().min(1),
+    // more resources to book for the same time, all or nothing
+    additional_resource_ids: z.array(z.string().min(1)).max(9).optional(),
     starts_at: isoDateTime,
     ends_at: isoDateTime,
     // admin-only: create on behalf of a customer

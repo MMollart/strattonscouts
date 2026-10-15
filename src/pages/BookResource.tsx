@@ -16,6 +16,8 @@ import type { MyOrganisation } from './Organisations';
 import { useQuote } from '../lib/useQuote';
 import { PriceSummary } from '../components/PriceSummary';
 import { RecurringBooking } from '../components/RecurringBooking';
+import { ExtraResources, type ExtraStatus } from '../components/ExtraResources';
+import { formatGBP } from '@shared/pricing';
 
 interface ResourceDetail {
   id: string;
@@ -57,6 +59,8 @@ export default function BookResource() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [provisional, setProvisional] = useState(false);
   const [repeat, setRepeat] = useState(false);
+  const [extras, setExtras] = useState<string[]>([]);
+  const [extraStatus, setExtraStatus] = useState<Record<string, ExtraStatus | null>>({});
 
   const myCategory = categories?.find((c) => c.id === (organisation ? organisation.pricing_category_id : user?.pricing_category_id));
   const iso = useMemo(() => windowToIso(win), [win]);
@@ -77,6 +81,7 @@ export default function BookResource() {
     try {
       const booking = await api.post<{ id: string }>('/bookings', {
         resource_id: resource.id,
+        ...(extras.length ? { additional_resource_ids: extras } : {}),
         starts_at: iso.startsAt,
         ends_at: iso.endsAt,
         organisation_id: organisation?.id ?? null,
@@ -93,6 +98,9 @@ export default function BookResource() {
   if (loading) return <Spinner />;
   if (error) return <ErrorState message={error} />;
   if (!resource) return null;
+
+  const extrasReady = extras.every((id) => extraStatus[id]?.ok);
+  const groupTotal = quote && extrasReady ? extras.reduce((sum, id) => sum + (extraStatus[id]?.totalPence ?? 0), quote.total_pence) : null;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -138,6 +146,21 @@ export default function BookResource() {
           <RecurringBooking resourceId={resource.id} resourceName={resource.name} organisationId={organisation?.id ?? null} window={win} />
         ) : (
         <>
+        <ExtraResources
+          mainResourceId={resource.id}
+          window={iso}
+          organisationId={organisation?.id ?? null}
+          selected={extras}
+          onChange={setExtras}
+          onStatus={(id, st) => setExtraStatus((prev) => ({ ...prev, [id]: st }))}
+        />
+        {extras.length > 0 && (
+          <p className="flex justify-between rounded-xl bg-scout-off-white p-4 font-bold">
+            <span>Total for {extras.length + 1} resources</span>
+            <span>{groupTotal === null ? '—' : formatGBP(groupTotal)}</span>
+          </p>
+        )}
+
         <label className="flex items-start gap-2">
           <input type="checkbox" className="mt-1" checked={provisional} onChange={(e) => setProvisional(e.target.checked)} />
           <span>
@@ -151,8 +174,9 @@ export default function BookResource() {
 
         {submitError && <ErrorState message={submitError} />}
 
-        <button className="btn-primary w-full" onClick={submit} disabled={submitting || !quote || ['conflict', 'closure', 'inactive', 'restricted'].includes(availability.status)}>
+        <button className="btn-primary w-full" onClick={submit} disabled={submitting || !quote || !extrasReady || ['conflict', 'closure', 'inactive', 'restricted'].includes(availability.status)}>
           {submitting ? 'Submitting…' : provisional ? 'Hold provisionally' : resource.requires_approval ? 'Request booking' : 'Confirm booking'}
+          {extras.length > 0 && !submitting ? ` (${extras.length + 1} resources)` : ''}
         </button>
         </>
         )}

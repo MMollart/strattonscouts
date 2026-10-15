@@ -18,6 +18,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | `0011_email_templates.sql` | FR06 Email templates & history |
 | *(none)* | FR09 Admin calendar (reads existing tables) |
 | `0012_assets.sql` | FR07 Physical asset management |
+| `0013_booking_groups.sql` | Several resources in one booking |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -488,3 +489,27 @@ act simultaneously.
 and when, who recorded the return and when, the outcome, and the notes from
 both ends. Rows are never deleted. Users see the items currently lent to them
 under My account → *On loan to you*.
+
+## Several resources in one booking
+
+On the booking page, *Add more resources at the same time* lets a customer
+book, for example, the Main Hall and the Kitchen together. Each extra resource
+is checked and priced live, and a combined total is shown.
+`POST /api/bookings` accepts `additional_resource_ids`.
+
+**Decision: one booking per resource, linked by a group.** Each resource keeps
+its own booking row, reference, price and approval, so approval stays per
+resource as agreed: a hall that needs approval waits for it, while the
+kitchen booked with it can be confirmed at once. Changes and cancellations
+also work per resource. `bookings.group_id` links them, and the booking page
+lists the bookings made together. The alternative, one booking spanning
+several resources, would have forced a single status and price on resources
+with different rules.
+
+**All or nothing.** Every resource is validated exactly as a single booking
+(rules, closures, notice, provisional holds), then all of them are inserted
+in one guarded batch: if any resource is taken meanwhile, nothing is booked.
+Resources that include each other (a hall and the Whole Venue) cannot be
+combined. The customer gets one email per outcome (confirmed, awaiting
+approval, provisional) naming every resource it covers, rather than one
+email per resource. Recurring bookings remain single-resource.

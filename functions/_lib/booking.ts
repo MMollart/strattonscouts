@@ -76,6 +76,8 @@ export interface BookingDraft {
   eventType: string;
   /** The recurring series this booking is an occurrence of (FR05). */
   seriesId?: string | null;
+  /** Resources booked together in one request share a group. */
+  groupId?: string | null;
   /** Overridden restrictions to record against the booking. */
   overrides: { kind: RestrictionKind; detail: string; reason: string }[];
 }
@@ -94,8 +96,8 @@ export function bookingInsertStatements(env: Env, d: BookingDraft): D1PreparedSt
     `INSERT INTO bookings (id, reference, user_id, resource_id, starts_at, ends_at, status, category_id, pricing_model,
                            unit_price_pence, total_amount_pence, approved_by, cancelled_by, created_at, updated_at,
                            organisation_id, created_by, base_amount_pence, discount_pence, discount_label,
-                           pricing_rate_id, pricing_discount_id, price_breakdown, organisation_pricing_id, expires_at, series_id)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                           pricing_rate_id, pricing_discount_id, price_breakdown, organisation_pricing_id, expires_at, series_id, group_id)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
      WHERE NOT EXISTS (${CONFLICTING_BOOKING_SQL})
        AND NOT EXISTS (${OVERLAPPING_CLOSURE_SQL})`,
   ).bind(
@@ -123,6 +125,7 @@ export function bookingInsertStatements(env: Env, d: BookingDraft): D1PreparedSt
     d.price.organisation_pricing_id,
     d.expiresAt,
     d.seriesId ?? null,
+    d.groupId ?? null,
     d.resourceId,
     d.resourceId,
     d.resourceId,
