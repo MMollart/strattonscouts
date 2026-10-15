@@ -1,12 +1,13 @@
 import type { Env } from '../../../_lib/http';
 import { error, json } from '../../../_lib/http';
-import { getAuthUser, isAdmin } from '../../../_lib/auth';
+import { requirePermission } from '../../../_lib/auth';
 import { transitionBooking } from '../../../_lib/lifecycle';
 
-// Admin: approve or reject a pending booking. Body: { decision: 'approve'|'reject' }
+// Admin: approve or reject a pending booking, or confirm a provisional one
+// (decision 'approve'; revalidated like an approval). Body: { decision: 'approve'|'reject' }
 export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'bookings.approve');
+  if (user instanceof Response) return user;
   const id = String(params.id);
 
   let body: { decision?: string };
@@ -22,7 +23,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
   const result = await transitionBooking(env, {
     bookingId: id,
     to: body.decision === 'approve' ? 'confirmed' : 'rejected',
-    actorId: user!.id,
+    actorId: user.id,
     actorIsAdmin: true,
   });
   if (!result.ok) {
@@ -31,6 +32,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
         ? 'This booking now clashes with another active booking, so it cannot be approved'
         : result.code === 'closure'
           ? 'This booking overlaps a closure, so it cannot be approved'
+          : result.code === 'expired'
+            ? 'This provisional booking has expired and its time has been released'
           : result.code === 'not_found'
             ? 'Booking not found'
             : 'This booking has already been updated';

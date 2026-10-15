@@ -1,0 +1,42 @@
+# Scheduled Worker for Release 2 (FR04 provisional booking expiry).
+# Deployed separately from the Pages site:
+#   npx wrangler deploy --config workers/scheduler/wrangler.toml --env production
+# It uses the same D1 databases as the Pages project (wrangler.toml at the
+# repository root). Email settings must match the Pages project's variables
+# and secrets (EMAIL_PROVIDER, EMAIL_FROM, EMAIL_API_KEY) once email sending
+# is configured.
+
+name = "strattonscouts-scheduler"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[alias]
+"@shared" = "../../src/shared"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "strattonscouts-dev"
+database_id = "1349588d-ad18-42ba-9b7c-160b0d9843bd"
+
+[vars]
+ENVIRONMENT = "development"
+APP_BASE_URL = "http://localhost:5173"
+
+[env.production]
+name = "strattonscouts-scheduler"
+
+[env.production.triggers]
+crons = ["*/5 * * * *"]
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "strattonscouts-prod"
+database_id = "bed80acb-3def-477d-9a47-8130031a5593"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+APP_BASE_URL = "https://strattonscouts.pages.dev"

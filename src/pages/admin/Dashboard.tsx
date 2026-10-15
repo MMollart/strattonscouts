@@ -2,11 +2,13 @@ import { Link } from 'react-router-dom';
 import { useApi } from '../../lib/useApi';
 import { Spinner, ErrorState, StatusBadge } from '../../components/ui';
 import { formatLondon } from '@shared/londonTime';
+import { useAuth } from '../../lib/auth';
 
 interface Dashboard {
   upcoming_bookings: number;
   confirmed_bookings: number;
   pending_approval: number;
+  provisional: number;
   recent_bookings: {
     id: string;
     reference: string;
@@ -19,6 +21,7 @@ interface Dashboard {
 
 export default function AdminDashboard() {
   const { data, loading, error } = useApi<Dashboard>('/admin/dashboard');
+  const { can } = useAuth();
 
   if (loading) return <Spinner />;
   if (error) return <ErrorState message={error} />;
@@ -30,16 +33,23 @@ export default function AdminDashboard() {
         <h1 className="text-3xl">Administration</h1>
         <nav className="flex flex-wrap gap-2 text-sm">
           <Link to="/admin/bookings" className="btn-secondary">Bookings</Link>
+          <Link to="/admin/calendar" className="btn-secondary">Calendar</Link>
           <Link to="/admin/resources" className="btn-secondary">Resources</Link>
           <Link to="/admin/pricing" className="btn-secondary">Pricing &amp; conflicts</Link>
           <Link to="/admin/users" className="btn-secondary">Users</Link>
+          <Link to="/admin/organisations" className="btn-secondary">Organisations</Link>
+          <Link to="/admin/emails" className="btn-secondary">Emails</Link>
+          {can('assets.manage') && <Link to="/admin/assets" className="btn-secondary">Assets</Link>}
+          {can('admins.manage') && <Link to="/admin/admins" className="btn-secondary">Administrators</Link>}
+          {can('settings.manage') && <Link to="/admin/settings" className="btn-secondary">Settings</Link>}
         </nav>
       </div>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="Upcoming bookings" value={data.upcoming_bookings} />
         <Metric label="Confirmed" value={data.confirmed_bookings} />
         <Metric label="Awaiting approval" value={data.pending_approval} accent />
+        <Metric label="Provisional holds" value={data.provisional} />
       </div>
 
       <h2 className="mt-8 text-xl">Recent activity</h2>

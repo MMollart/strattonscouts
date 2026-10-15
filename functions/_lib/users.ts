@@ -9,6 +9,7 @@ export async function toPublicUser(env: Env, user: AuthUser): Promise<{
   phone: string | null;
   pricing_category_id: string;
   roles: string[];
+  permissions: string[];
 }> {
   const row = await env.DB.prepare('SELECT phone_encrypted FROM users WHERE id = ?')
     .bind(user.id)
@@ -21,5 +22,6 @@ export async function toPublicUser(env: Env, user: AuthUser): Promise<{
     phone,
     pricing_category_id: user.pricing_category_id,
     roles: user.roles,
+    permissions: user.permissions,
   };
 }

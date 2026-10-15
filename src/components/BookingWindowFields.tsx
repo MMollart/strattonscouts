@@ -64,34 +64,47 @@ export function BookingWindowFields({
   );
 }
 
-export type AvailabilityStatus = 'idle' | 'checking' | 'available' | 'closure' | 'conflict' | 'inactive' | 'error';
+export type AvailabilityStatus = 'idle' | 'checking' | 'available' | 'closure' | 'conflict' | 'inactive' | 'restricted' | 'error';
+
+export interface AvailabilityViolation {
+  kind: 'min_notice' | 'max_advance' | 'opening_hours' | 'recurring_restriction';
+  message: string;
+}
+
+export interface AvailabilityResult {
+  status: AvailabilityStatus;
+  /** Why the window is restricted (FR03), when status is 'restricted'. */
+  violations: AvailabilityViolation[];
+}
+
+const IDLE: AvailabilityResult = { status: 'idle', violations: [] };
 
 /** Live availability for a window, re-checked (debounced) as it changes. */
-export function useAvailability(resourceId: string | undefined, window: { startsAt: string; endsAt: string } | null): AvailabilityStatus {
-  const [status, setStatus] = useState<AvailabilityStatus>('idle');
+export function useAvailability(resourceId: string | undefined, window: { startsAt: string; endsAt: string } | null): AvailabilityResult {
+  const [result, setResult] = useState<AvailabilityResult>(IDLE);
   const startsAt = window?.startsAt;
   const endsAt = window?.endsAt;
   useEffect(() => {
     if (!resourceId || !startsAt || !endsAt) {
-      setStatus('idle');
+      setResult(IDLE);
       return;
     }
     let current = true;
-    setStatus('checking');
+    setResult({ status: 'checking', violations: [] });
     const timer = setTimeout(() => {
       api
-        .get<{ available: boolean; reason?: 'closure' | 'conflict' | 'inactive' }>(
+        .get<{ available: boolean; reason?: 'closure' | 'conflict' | 'inactive' | 'restricted'; violations?: AvailabilityViolation[] }>(
           `/availability?resource_id=${encodeURIComponent(resourceId)}&starts_at=${encodeURIComponent(startsAt)}&ends_at=${encodeURIComponent(endsAt)}`,
         )
-        .then((r) => current && setStatus(r.available ? 'available' : (r.reason ?? 'conflict')))
-        .catch(() => current && setStatus('error'));
+        .then((r) => current && setResult({ status: r.available ? 'available' : (r.reason ?? 'conflict'), violations: r.violations ?? [] }))
+        .catch(() => current && setResult({ status: 'error', violations: [] }));
     }, 300);
     return () => {
       current = false;
       clearTimeout(timer);
     };
   }, [resourceId, startsAt, endsAt]);
-  return status;
+  return result;
 }
 
 export const AVAILABILITY_MESSAGE: Record<AvailabilityStatus, string> = {
@@ -101,5 +114,22 @@ export const AVAILABILITY_MESSAGE: Record<AvailabilityStatus, string> = {
   closure: 'Not available: the venue is closed for some of this time.',
   conflict: 'Not available: this clashes with an existing booking.',
   inactive: 'This resource is not currently available.',
+  restricted: 'Not available: this time is outside the booking rules for this resource.',
   error: 'Could not check availability right now.',
 };
+
+/** The live availability line under a booking window, with any rule details. */
+export function AvailabilityNotice({ result }: { result: AvailabilityResult }) {
+  if (result.status === 'idle') return null;
+  const colour = result.status === 'available' ? 'text-scout-green' : result.status === 'checking' ? 'text-gray-500' : 'text-scout-red';
+  return (
+    <div role="status">
+      <p className={`text-sm font-bold ${colour}`}>{AVAILABILITY_MESSAGE[result.status]}</p>
+      {result.violations.length > 0 && (
+        <ul className="mt-1 list-disc pl-5 text-sm text-scout-red">
+          {result.violations.map((v) => <li key={v.kind + v.message}>{v.message}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}

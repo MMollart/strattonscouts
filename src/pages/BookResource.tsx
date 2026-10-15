@@ -3,16 +3,19 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useApi } from '../lib/useApi';
 import { api, ApiError } from '../lib/api';
 import { Spinner, ErrorState } from '../components/ui';
-import { calculateTotalPence, formatGBP } from '@shared/pricing';
 import { useAuth } from '../lib/auth';
 import { londonToday, toLondon } from '@shared/londonTime';
 import {
-  AVAILABILITY_MESSAGE,
+  AvailabilityNotice,
   BookingWindowFields,
   type BookingWindow,
   useAvailability,
   windowToIso,
 } from '../components/BookingWindowFields';
+import type { MyOrganisation } from './Organisations';
+import { useQuote } from '../lib/useQuote';
+import { PriceSummary } from '../components/PriceSummary';
+import { RecurringBooking } from '../components/RecurringBooking';
 
 interface ResourceDetail {
   id: string;
@@ -20,6 +23,7 @@ interface ResourceDetail {
   slug: string;
   pricing_model: 'hourly' | 'nightly' | 'fixed';
   requires_approval: boolean;
+  provisional_hold_hours: number;
   prices: { category: string; label: string; amount_pence: number; is_free: boolean }[];
 }
 
@@ -44,26 +48,21 @@ export default function BookResource() {
   const { user } = useAuth();
   const { data: resource, loading, error } = useApi<ResourceDetail>(`/resources/${slug}`, [slug]);
   const { data: categories } = useApi<Category[]>('/categories');
+  const { data: organisations } = useApi<MyOrganisation[]>('/organisations');
+  const [organisationId, setOrganisationId] = useState<string>(() => params.get('organisation') ?? '');
+  const organisation = organisations?.find((o) => o.id === organisationId);
 
   const [win, setWin] = useState<BookingWindow>(() => initialWindow(params));
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [provisional, setProvisional] = useState(false);
+  const [repeat, setRepeat] = useState(false);
 
-  const myCategory = categories?.find((c) => c.id === user?.pricing_category_id);
-  const myPrice = resource?.prices.find((p) => myCategory && p.category === myCategory.name);
+  const myCategory = categories?.find((c) => c.id === (organisation ? organisation.pricing_category_id : user?.pricing_category_id));
   const iso = useMemo(() => windowToIso(win), [win]);
   const availability = useAvailability(resource?.id, iso);
 
-  const total = useMemo(() => {
-    if (!resource || !myPrice || !iso) return null;
-    return calculateTotalPence({
-      pricingModel: resource.pricing_model,
-      unitPricePence: myPrice.amount_pence,
-      isFree: myPrice.is_free,
-      startsAt: iso.startsAt,
-      endsAt: iso.endsAt,
-    });
-  }, [resource, myPrice, iso]);
+  const { quote, loading: quoting, error: quoteError } = useQuote({ resourceId: resource?.id, window: iso, organisationId: organisation?.id ?? null });
 
   useEffect(() => setSubmitError(null), [win]);
 
@@ -80,6 +79,8 @@ export default function BookResource() {
         resource_id: resource.id,
         starts_at: iso.startsAt,
         ends_at: iso.endsAt,
+        organisation_id: organisation?.id ?? null,
+        provisional,
       });
       navigate(`/bookings/${booking.id}`);
     } catch (e) {
@@ -103,34 +104,58 @@ export default function BookResource() {
       )}
 
       <div className="card mt-6 space-y-4">
+        {organisations && organisations.length > 0 && (
+          <div>
+            <label className="label" htmlFor="book-as">Booking for</label>
+            <select id="book-as" className="input" value={organisationId} onChange={(e) => setOrganisationId(e.target.value)}>
+              <option value="">Myself (personal booking)</option>
+              {organisations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+            {organisation && <p className="mt-1 text-xs text-gray-500">Priced at {organisation.name}&apos;s rates and visible to its members.</p>}
+          </div>
+        )}
         <BookingWindowFields value={win} onChange={setWin} minDate={londonToday()} />
         {!iso && <p className="text-sm text-scout-red">The end must be after the start.</p>}
-        {availability !== 'idle' && (
-          <p
-            className={`text-sm font-bold ${availability === 'available' ? 'text-scout-green' : availability === 'checking' ? 'text-gray-500' : 'text-scout-red'}`}
-            role="status"
-          >
-            {AVAILABILITY_MESSAGE[availability]}
-          </p>
-        )}
+        <AvailabilityNotice result={availability} />
 
         <div className="rounded-xl bg-scout-off-white p-4">
           <div className="flex items-center justify-between">
-            <span>Your category</span>
+            <span>{organisation ? 'Organisation category' : 'Your category'}</span>
             <span className="font-bold">{myCategory?.label ?? '—'}</span>
           </div>
-          <div className="mt-2 flex items-center justify-between text-lg">
-            <span>Estimated total</span>
-            <span className="font-black text-scout-purple">{total !== null ? formatGBP(total) : '—'}</span>
+          <div className="mt-3">
+            <PriceSummary price={quote} loading={quoting} error={quoteError} />
           </div>
-          <p className="mt-1 text-xs text-gray-500">The final price is confirmed server-side when you submit.</p>
+          <p className="mt-2 text-xs text-gray-500">This is the price you will be charged; it is fixed when you submit.</p>
         </div>
+
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} />
+          <span className="font-bold">Repeat this booking</span>
+        </label>
+
+        {repeat ? (
+          <RecurringBooking resourceId={resource.id} resourceName={resource.name} organisationId={organisation?.id ?? null} window={win} />
+        ) : (
+        <>
+        <label className="flex items-start gap-2">
+          <input type="checkbox" className="mt-1" checked={provisional} onChange={(e) => setProvisional(e.target.checked)} />
+          <span>
+            <span className="font-bold">Hold this time provisionally</span>
+            <span className="block text-sm text-gray-600">
+              We reserve it for up to {resource.provisional_hold_hours} hours (never past the start of the booking). It is released
+              automatically unless an administrator confirms it in that time.
+            </span>
+          </span>
+        </label>
 
         {submitError && <ErrorState message={submitError} />}
 
-        <button className="btn-primary w-full" onClick={submit} disabled={submitting || total === null || availability === 'conflict' || availability === 'closure' || availability === 'inactive'}>
-          {submitting ? 'Submitting…' : resource.requires_approval ? 'Request booking' : 'Confirm booking'}
+        <button className="btn-primary w-full" onClick={submit} disabled={submitting || !quote || ['conflict', 'closure', 'inactive', 'restricted'].includes(availability.status)}>
+          {submitting ? 'Submitting…' : provisional ? 'Hold provisionally' : resource.requires_approval ? 'Request booking' : 'Confirm booking'}
         </button>
+        </>
+        )}
       </div>
     </div>
   );

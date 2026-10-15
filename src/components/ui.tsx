@@ -33,6 +33,8 @@ export function StatusBadge({ status }: { status: string }) {
     pending_approval: 'bg-scout-yellow/30 text-yellow-800',
     rejected: 'bg-scout-red/15 text-scout-red',
     cancelled: 'bg-gray-200 text-gray-600',
+    provisional: 'bg-scout-blue/15 text-scout-blue',
+    expired: 'bg-gray-200 text-gray-600',
   };
   const label = status.replace(/_/g, ' ');
   return <span className={`badge ${map[status] ?? 'bg-gray-100 text-gray-700'}`}>{label}</span>;

@@ -1,7 +1,8 @@
 import type { Env } from './http';
-import { newId, now } from './http';
+import { error, newId, now } from './http';
 import { randomToken, sha256Hex } from './crypto';
 import type { RoleName } from '@shared/types';
+import type { Permission } from '@shared/permissions';
 
 const SESSION_COOKIE = 'ss_session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
@@ -12,6 +13,7 @@ export interface AuthUser {
   full_name: string;
   pricing_category_id: string;
   roles: RoleName[];
+  permissions: Permission[];
 }
 
 export function sessionCookie(token: string, maxAgeSeconds: number): string {
@@ -82,16 +84,43 @@ export async function getAuthUser(env: Env, request: Request): Promise<AuthUser 
     .bind(session.user_id)
     .first<{ id: string; email: string; full_name: string; pricing_category_id: string }>();
   if (!user) return null;
-  const roleRows = await env.DB.prepare(
-    `SELECT r.name AS name FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ?`,
-  )
-    .bind(user.id)
-    .all<{ name: RoleName }>();
-  return { ...user, roles: roleRows.results.map((r) => r.name) };
+  return { ...user, ...(await loadAccess(env, user.id)) };
 }
 
+/** A user's administration roles and the permissions those roles grant. */
+export async function loadAccess(env: Env, userId: string): Promise<{ roles: RoleName[]; permissions: Permission[] }> {
+  const [roleRows, permRows] = await env.DB.batch<{ name: string }>([
+    env.DB.prepare('SELECT r.name AS name FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ?').bind(userId),
+    env.DB.prepare(
+      `SELECT DISTINCT rp.permission_key AS name FROM user_roles ur
+       JOIN role_permissions rp ON rp.role_id = ur.role_id WHERE ur.user_id = ?`,
+    ).bind(userId),
+  ]);
+  return {
+    roles: roleRows.results.map((r) => r.name as RoleName),
+    permissions: permRows.results.map((r) => r.name as Permission).sort(),
+  };
+}
+
+/** Any administration role (Super Admin, Booking Admin or Viewer). */
 export function isAdmin(user: AuthUser | null): boolean {
-  return !!user && (user.roles.includes('admin') || user.roles.includes('super_admin'));
+  return !!user && user.roles.length > 0;
+}
+
+/** Whether the user holds a platform permission. Organisation roles never grant these. */
+export function can(user: AuthUser | null, permission: Permission): boolean {
+  return !!user && user.permissions.includes(permission);
+}
+
+/**
+ * Resolve the signed-in user and require a permission. Returns the user, or
+ * the 401/403 response to send.
+ */
+export async function requirePermission(env: Env, request: Request, permission: Permission): Promise<AuthUser | Response> {
+  const user = await getAuthUser(env, request);
+  if (!user) return error('Not authenticated', 401);
+  if (!can(user, permission)) return error('Not authorised', 403);
+  return user;
 }
 
 export function isSuperAdmin(user: AuthUser | null): boolean {

@@ -1,6 +1,7 @@
 import type { Env } from '../_lib/http';
 import { error, json } from '../_lib/http';
 import { canonicalIso, loadBusyPeriods } from '../_lib/availability-sql';
+import { checkRestrictions } from '../_lib/restrictions';
 
 /**
  * Public availability check for one window. Returns only availability
@@ -35,5 +36,10 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   const busy = await loadBusyPeriods(env, resourceId, startsAt, endsAt);
   if (busy.some((p) => p.kind === 'closed')) return json({ available: false, reason: 'closure' });
   if (busy.length) return json({ available: false, reason: 'conflict' });
+  // Booking restrictions (FR03): notice, advance window, recurring rules, opening hours.
+  const violations = await checkRestrictions(env, resourceId, startsAt, endsAt);
+  if (violations.length) {
+    return json({ available: false, reason: 'restricted', violations: violations.map(({ kind, message }) => ({ kind, message })) });
+  }
   return json({ available: true });
 };

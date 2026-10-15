@@ -1,18 +1,21 @@
 // Shared domain types used by both frontend and backend (Pages Functions).
+import type { AdminRole, Permission } from './permissions';
 
 export type PricingModel = 'hourly' | 'nightly' | 'fixed';
 export type ResourceType = 'individual' | 'combined';
 
-// Release 1 statuses. Schema permits future: provisional, expired, completed.
+// Release 1 statuses plus provisional holds and their expiry (FR04).
 export type BookingStatus =
   | 'pending_approval'
   | 'confirmed'
   | 'rejected'
-  | 'cancelled';
+  | 'cancelled'
+  | 'provisional'
+  | 'expired';
 
-export type RoleName = 'super_admin' | 'admin';
+export type { AdminRole as RoleName } from './permissions';
 
-export type CategoryName = 'scouts' | 'community' | 'public';
+export type CategoryName = string;
 
 export interface PricingCategory {
   id: string;
@@ -27,7 +30,8 @@ export interface PublicUser {
   full_name: string;
   phone: string | null;
   pricing_category_id: string;
-  roles: RoleName[];
+  roles: AdminRole[];
+  permissions: Permission[];
 }
 
 export interface Resource {

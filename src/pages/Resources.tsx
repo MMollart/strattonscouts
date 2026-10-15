@@ -10,7 +10,7 @@ interface ResourceListItem {
   description: string;
   requires_approval: boolean;
   pricing_model: string;
-  prices: { category: string; amount_pence: number; is_free: boolean }[];
+  prices: { category: string; pricing_model: string; amount_pence: number; is_free: boolean }[];
   primary_image_key: string | null;
 }
 

@@ -23,7 +23,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     .first();
   if (existing) return error('An account with this email already exists', 409);
 
-  const cat = await env.DB.prepare('SELECT id FROM pricing_categories WHERE name = ?')
+  const cat = await env.DB.prepare('SELECT id FROM pricing_categories WHERE name = ? AND is_active = 1')
     .bind(category)
     .first<{ id: string }>();
   if (!cat) return error('Invalid category', 400);
@@ -40,7 +40,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     .run();
 
   const { token, maxAge } = await createSession(env, id);
-  return json({ id, email: email.toLowerCase(), full_name, phone, pricing_category_id: cat.id, roles: [] }, {
+  return json({ id, email: email.toLowerCase(), full_name, phone, pricing_category_id: cat.id, roles: [], permissions: [] }, {
     status: 201,
     headers: { 'set-cookie': sessionCookie(token, maxAge) },
   });

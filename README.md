@@ -5,8 +5,10 @@ the Cloudflare developer platform. Customers can browse facilities, check live
 availability, register, and book resources; administrators manage resources,
 pricing, availability, the conflict matrix, and booking approvals.
 
-> **Release 1 (MVP).** Online payments and automated recurring/series bookings
-> are intentionally out of scope for this release. 
+> **Release 2** adds organisations, advanced pricing and availability rules,
+> provisional and recurring bookings, amendments, configurable email templates,
+> a consolidated admin calendar, asset tracking and granular admin roles. See
+> [docs/release-2.md](docs/release-2.md). Online payments remain out of scope.
 
 ## Tech stack
 
@@ -115,7 +117,9 @@ curl -X POST http://localhost:8788/api/admin/bootstrap \
 ```
 
 The endpoint refuses to run once a Super Admin exists. Thereafter, Super Admins
-grant/revoke the Admin role to other users from the **Admin → Users** screen.
+assign the Super Admin, Booking Admin or Viewer role from **Admin →
+Administrators**. See [docs/release-2.md](docs/release-2.md#fr08--advanced-admin-roles--permissions)
+for what each role can do.
 
 ## Scripts
 
@@ -211,7 +215,8 @@ Development and production use **isolated** D1 databases and R2 buckets.
 - Customer contact details are encrypted at rest (AES-GCM) using
   `DATA_ENCRYPTION_KEY`.
 - All inputs are validated server-side with Zod; all SQL is parameterised.
-- Role-based access control is enforced on every admin endpoint.
+- Permission-based access control (Super Admin / Booking Admin / Viewer) is
+  enforced server-side on every admin endpoint.
 - Baseline security headers are applied globally in `functions/_middleware.ts`.
 - Transactional emails are idempotent (a dedupe key prevents duplicates on
   retry) and failure-tolerant (a send failure never rolls back a booking).

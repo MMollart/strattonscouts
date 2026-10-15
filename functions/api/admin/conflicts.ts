@@ -1,12 +1,12 @@
 import type { Env } from '../../_lib/http';
 import { error, json, newId, now } from '../../_lib/http';
-import { getAuthUser, isAdmin } from '../../_lib/auth';
+import { requirePermission } from '../../_lib/auth';
 import { conflictUpsertSchema } from '@shared/validation';
 
 // Admin: list the full conflict matrix.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'bookings.view');
+  if (user instanceof Response) return user;
   const rows = await env.DB.prepare(
     'SELECT id, resource_id, conflicts_with_id, is_mandatory FROM resource_conflicts',
   ).all();
@@ -15,8 +15,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 
 // Admin: add a (non-mandatory) conflict. Conflicts are bidirectional.
 export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'resources.manage');
+  if (user instanceof Response) return user;
 
   let body: unknown;
   try {
@@ -47,8 +47,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
 
 // Admin: remove a configurable conflict. Mandatory conflicts cannot be removed.
 export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
-  const user = await getAuthUser(env, request);
-  if (!isAdmin(user)) return error('Not authorised', 403);
+  const user = await requirePermission(env, request, 'resources.manage');
+  if (user instanceof Response) return user;
 
   let body: unknown;
   try {

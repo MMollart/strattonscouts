@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
+import { useAuth } from '../../lib/auth';
+import { ChangeRequests } from './ChangeRequests';
+import { useQuote } from '../../lib/useQuote';
+import { PriceSummary } from '../../components/PriceSummary';
 import { Spinner, EmptyState, ErrorState, StatusBadge } from '../../components/ui';
 import { formatGBP } from '@shared/pricing';
 import { formatLondon, londonToday } from '@shared/londonTime';
 import {
-  AVAILABILITY_MESSAGE,
+  AvailabilityNotice,
   BookingWindowFields,
   type BookingWindow,
   useAvailability,
@@ -24,14 +28,18 @@ interface AdminBookingRow {
   customer_name: string;
   customer_email: string;
   customer_phone: string | null;
+  organisation_id: string | null;
+  organisation_name: string | null;
+  expires_at: string | null;
 }
 
 interface ResourceRow { id: string; name: string; is_active: boolean; }
 interface CustomerRow { id: string; full_name: string; email: string; category_label: string; }
 
-const STATUSES = ['pending_approval', 'confirmed', 'rejected', 'cancelled'];
+const STATUSES = ['pending_approval', 'provisional', 'confirmed', 'rejected', 'cancelled', 'expired'];
 
 export default function AdminBookings() {
+  const { can } = useAuth();
   const { data: resources } = useApi<ResourceRow[]>('/admin/resources');
   const [status, setStatus] = useState('');
   const [resourceId, setResourceId] = useState('');
@@ -75,6 +83,22 @@ export default function AdminBookings() {
     }
   }
 
+  async function changeExpiry(b: AdminBookingRow) {
+    const hours = prompt('Hold this booking for how many more hours from now?', '24');
+    if (!hours) return;
+    const n = Number(hours);
+    if (!Number.isFinite(n) || n <= 0) return setError('Enter a number of hours');
+    setWorking(b.id);
+    try {
+      await api.put(`/admin/bookings/${b.id}/expiry`, { expires_at: new Date(Date.now() + n * 3_600_000).toISOString() });
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not change the hold');
+    } finally {
+      setWorking(null);
+    }
+  }
+
   async function cancel(id: string) {
     if (!confirm('Cancel this booking?')) return;
     setWorking(id);
@@ -95,7 +119,7 @@ export default function AdminBookings() {
         <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
       </div>
 
-      {creating ? (
+      {!can('bookings.create') ? null : creating ? (
         <BookForCustomer
           resources={(resources ?? []).filter((r) => r.is_active)}
           onClose={() => setCreating(false)}
@@ -104,6 +128,8 @@ export default function AdminBookings() {
       ) : (
         <button className="btn-primary mt-4" onClick={() => setCreating(true)}>Book for a customer</button>
       )}
+
+      <ChangeRequests onDecided={() => void load()} />
 
       <div className="card mt-6 grid gap-3 sm:grid-cols-3">
         <div>
@@ -141,20 +167,32 @@ export default function AdminBookings() {
                       {b.customer_name} · <a className="underline" href={`mailto:${b.customer_email}`}>{b.customer_email}</a>
                       {b.customer_phone && <> · <a className="underline" href={`tel:${b.customer_phone}`}>{b.customer_phone}</a></>}
                     </p>
+                    {b.organisation_name && (
+                      <p className="text-sm"><Link className="font-bold text-scout-purple" to={`/organisations/${b.organisation_id}`}>{b.organisation_name}</Link></p>
+                    )}
                     <p className="text-xs text-gray-500">
                       Ref {b.reference} · {formatLondon(b.starts_at)} to {formatLondon(b.ends_at)} · {formatGBP(b.total_amount_pence)}
                     </p>
+                    {b.status === 'provisional' && b.expires_at && (
+                      <p className="text-xs font-bold text-scout-blue">Held until {formatLondon(b.expires_at)}</p>
+                    )}
                   </div>
                   <StatusBadge status={b.status} />
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {b.status === 'pending_approval' && (
+                  {b.status === 'pending_approval' && can('bookings.approve') && (
                     <>
                       <button className="btn-teal" disabled={working === b.id} onClick={() => decide(b.id, 'approve')}>Approve</button>
                       <button className="btn-danger" disabled={working === b.id} onClick={() => decide(b.id, 'reject')}>Reject</button>
                     </>
                   )}
-                  {(b.status === 'confirmed' || b.status === 'pending_approval') && (
+                  {b.status === 'provisional' && can('bookings.approve') && (
+                    <button className="btn-teal" disabled={working === b.id} onClick={() => decide(b.id, 'approve')}>Confirm</button>
+                  )}
+                  {b.status === 'provisional' && can('bookings.manage') && (
+                    <button className="btn-secondary" disabled={working === b.id} onClick={() => changeExpiry(b)}>Change hold</button>
+                  )}
+                  {['confirmed', 'pending_approval', 'provisional'].includes(b.status) && can('bookings.manage') && (
                     <button className="btn-secondary" disabled={working === b.id} onClick={() => cancel(b.id)}>Cancel</button>
                   )}
                 </div>
@@ -167,27 +205,38 @@ export default function AdminBookings() {
   );
 }
 
-function BookForCustomer({
+/** Book on behalf of a customer; also opened from the admin calendar with a slot (FR09). */
+export function BookForCustomer({
   resources,
   onClose,
   onCreated,
+  initial,
 }: {
   resources: ResourceRow[];
   onClose: () => void;
   onCreated: () => void;
+  initial?: { resourceId: string; window: BookingWindow };
 }) {
   const { data: customers, loading, error: loadError } = useApi<CustomerRow[]>('/admin/users');
   const [filter, setFilter] = useState('');
   const [customerId, setCustomerId] = useState('');
-  const [resourceId, setResourceId] = useState(resources[0]?.id ?? '');
+  const [resourceId, setResourceId] = useState(initial?.resourceId ?? resources[0]?.id ?? '');
   const [win, setWin] = useState<BookingWindow>(() => {
+    if (initial) return initial.window;
     const today = londonToday();
     return { startDate: today, startTime: '10:00', endDate: today, endTime: '12:00' };
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [overrideReason, setOverrideReason] = useState('');
+  const [provisional, setProvisional] = useState(false);
+  const [holdHours, setHoldHours] = useState('');
+  const { can } = useAuth();
   const iso = windowToIso(win);
   const availability = useAvailability(resourceId || undefined, iso);
+  // Rule restrictions (FR03) can be overridden with a reason; closures and clashes cannot.
+  const canOverride = can('availability.manage') && availability.status === 'restricted';
+  const { quote, loading: quoting, error: quoteError } = useQuote({ resourceId: resourceId || undefined, window: customerId ? iso : null, onBehalfOfUserId: customerId || undefined });
 
   const matches = (customers ?? []).filter((c) =>
     `${c.full_name} ${c.email}`.toLowerCase().includes(filter.trim().toLowerCase()),
@@ -207,6 +256,11 @@ function BookForCustomer({
         starts_at: iso.startsAt,
         ends_at: iso.endsAt,
         on_behalf_of_user_id: customerId,
+        provisional,
+        provisional_expiry_hours: provisional && holdHours ? Number(holdHours) : undefined,
+        override: canOverride && overrideReason.trim()
+          ? { kinds: availability.violations.map((v) => v.kind), reason: overrideReason.trim() }
+          : undefined,
       });
       onCreated();
     } catch (err) {
@@ -245,11 +299,27 @@ function BookForCustomer({
         </select>
       </div>
       <BookingWindowFields value={win} onChange={setWin} idPrefix="bfc" />
-      {availability !== 'idle' && (
-        <p className={`text-sm font-bold ${availability === 'available' ? 'text-scout-green' : availability === 'checking' ? 'text-gray-500' : 'text-scout-red'}`} role="status">
-          {AVAILABILITY_MESSAGE[availability]}
-        </p>
+      <AvailabilityNotice result={availability} />
+      {canOverride && (
+        <div className="rounded-xl border border-scout-red/40 p-3">
+          <label className="label" htmlFor="bfc-override">Override reason (recorded on the booking)</label>
+          <input id="bfc-override" className="input" maxLength={500} value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="Why this booking should go ahead anyway" />
+          <p className="mt-1 text-xs text-gray-500">Leave blank to keep the restriction. Closures and clashing bookings can never be overridden.</p>
+        </div>
       )}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={provisional} onChange={(e) => setProvisional(e.target.checked)} />
+          <span className="font-bold">Provisional hold</span>
+        </label>
+        {provisional && (
+          <div>
+            <label className="label" htmlFor="bfc-hold">Hold for (hours)</label>
+            <input id="bfc-hold" type="number" min={1} max={720} className="input w-32" value={holdHours} onChange={(e) => setHoldHours(e.target.value)} placeholder="Default" />
+          </div>
+        )}
+      </div>
+      {customerId && <div className="rounded-xl bg-scout-off-white p-4"><PriceSummary price={quote} loading={quoting} error={quoteError} /></div>}
       <p className="text-xs text-gray-500">
         The booking is priced at the customer&apos;s category rate and follows the resource&apos;s approval setting. The customer is emailed.
       </p>
