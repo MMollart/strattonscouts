@@ -2,7 +2,7 @@ import type { Env } from '../../_lib/http';
 import { json } from '../../_lib/http';
 import { requirePermission } from '../../_lib/auth';
 import { decryptAtRest } from '../../_lib/crypto';
-import { canonicalIso } from '../../_lib/availability-sql';
+import { canonicalIso, effectiveStatusSql } from '../../_lib/availability-sql';
 
 // Admin: list/search/filter bookings including customer contact information.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
@@ -19,7 +19,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 
   const clauses: string[] = [];
   const binds: unknown[] = [];
-  if (status) { clauses.push('b.status = ?'); binds.push(status); }
+  if (status) { clauses.push(`${effectiveStatusSql('b')} = ?`); binds.push(status); }
   if (resourceId) { clauses.push('b.resource_id = ?'); binds.push(resourceId); }
   if (organisationId) { clauses.push('b.organisation_id = ?'); binds.push(organisationId); }
   if (from && !Number.isNaN(Date.parse(from))) { clauses.push('b.ends_at >= ?'); binds.push(canonicalIso(from)); }
@@ -28,7 +28,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 
   const rows = await env.DB.prepare(
-    `SELECT b.id, b.reference, b.status, b.starts_at, b.ends_at, b.total_amount_pence,
+    `SELECT b.id, b.reference, ${effectiveStatusSql('b')} AS status, b.expires_at, b.starts_at, b.ends_at, b.total_amount_pence,
             r.name AS resource_name, u.full_name AS customer_name, u.email AS customer_email,
             u.phone_encrypted AS phone_encrypted, b.user_id, b.organisation_id, o.name AS organisation_name
      FROM bookings b JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id

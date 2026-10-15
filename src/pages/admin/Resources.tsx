@@ -19,6 +19,7 @@ interface ResourceRow {
   pricing_model: 'hourly' | 'nightly' | 'fixed';
   min_notice_minutes?: number | null;
   max_advance_days?: number | null;
+  provisional_expiry_hours?: number | null;
 }
 
 type Draft = Omit<ResourceRow, 'id'> & { id?: string };
@@ -335,6 +336,7 @@ function ClosuresPanel({ resources }: { resources: ResourceRow[] }) {
 function LimitsEditor({ resource, onClose, onSaved }: { resource: ResourceRow; onClose: () => void; onSaved: () => void }) {
   const [noticeHours, setNoticeHours] = useState(resource.min_notice_minutes ? String(resource.min_notice_minutes / 60) : '');
   const [advanceDays, setAdvanceDays] = useState(resource.max_advance_days ? String(resource.max_advance_days) : '');
+  const [holdHours, setHoldHours] = useState(resource.provisional_expiry_hours ? String(resource.provisional_expiry_hours) : '');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -353,6 +355,7 @@ function LimitsEditor({ resource, onClose, onSaved }: { resource: ResourceRow; o
       await api.put(`/admin/resources/${resource.id}/restrictions`, {
         min_notice_minutes: noticeHours ? Math.round(Number(noticeHours) * 60) : null,
         max_advance_days: advanceDays ? Number(advanceDays) : null,
+        provisional_expiry_hours: holdHours ? Number(holdHours) : null,
       });
       onSaved();
     } catch (err) {
@@ -378,6 +381,10 @@ function LimitsEditor({ resource, onClose, onSaved }: { resource: ResourceRow; o
         <div>
           <label className="label" htmlFor="lim-advance">Bookable up to (days ahead)</label>
           <input id="lim-advance" className="input" type="number" min={1} max={3650} value={advanceDays} onChange={(e) => setAdvanceDays(e.target.value)} placeholder="No limit" />
+        </div>
+        <div>
+          <label className="label" htmlFor="lim-hold">Provisional hold (hours)</label>
+          <input id="lim-hold" className="input" type="number" min={1} max={720} value={holdHours} onChange={(e) => setHoldHours(e.target.value)} placeholder="Use the global setting" />
         </div>
         <p className="text-xs text-gray-500">Limits apply to new bookings only. Existing bookings are not changed.</p>
         {error && <ErrorState message={error} />}

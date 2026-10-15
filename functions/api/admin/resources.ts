@@ -9,7 +9,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   const user = await requirePermission(env, request, 'bookings.view');
   if (user instanceof Response) return user;
   const rows = await env.DB.prepare(
-    `SELECT id, name, slug, description, resource_type, is_active, requires_approval, pricing_model, min_notice_minutes, max_advance_days, created_at, updated_at
+    `SELECT id, name, slug, description, resource_type, is_active, requires_approval, pricing_model, min_notice_minutes, max_advance_days, provisional_expiry_hours, created_at, updated_at
      FROM resources ORDER BY name`,
   ).all();
   return json(

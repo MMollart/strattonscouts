@@ -22,6 +22,7 @@ interface ResourceDetail {
   slug: string;
   pricing_model: 'hourly' | 'nightly' | 'fixed';
   requires_approval: boolean;
+  provisional_hold_hours: number;
   prices: { category: string; label: string; amount_pence: number; is_free: boolean }[];
 }
 
@@ -53,6 +54,7 @@ export default function BookResource() {
   const [win, setWin] = useState<BookingWindow>(() => initialWindow(params));
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [provisional, setProvisional] = useState(false);
 
   const myCategory = categories?.find((c) => c.id === (organisation ? organisation.pricing_category_id : user?.pricing_category_id));
   const iso = useMemo(() => windowToIso(win), [win]);
@@ -76,6 +78,7 @@ export default function BookResource() {
         starts_at: iso.startsAt,
         ends_at: iso.endsAt,
         organisation_id: organisation?.id ?? null,
+        provisional,
       });
       navigate(`/bookings/${booking.id}`);
     } catch (e) {
@@ -124,10 +127,21 @@ export default function BookResource() {
           <p className="mt-2 text-xs text-gray-500">This is the price you will be charged; it is fixed when you submit.</p>
         </div>
 
+        <label className="flex items-start gap-2">
+          <input type="checkbox" className="mt-1" checked={provisional} onChange={(e) => setProvisional(e.target.checked)} />
+          <span>
+            <span className="font-bold">Hold this time provisionally</span>
+            <span className="block text-sm text-gray-600">
+              We reserve it for up to {resource.provisional_hold_hours} hours (never past the start of the booking). It is released
+              automatically unless an administrator confirms it in that time.
+            </span>
+          </span>
+        </label>
+
         {submitError && <ErrorState message={submitError} />}
 
         <button className="btn-primary w-full" onClick={submit} disabled={submitting || !quote || ['conflict', 'closure', 'inactive', 'restricted'].includes(availability.status)}>
-          {submitting ? 'Submitting…' : resource.requires_approval ? 'Request booking' : 'Confirm booking'}
+          {submitting ? 'Submitting…' : provisional ? 'Hold provisionally' : resource.requires_approval ? 'Request booking' : 'Confirm booking'}
         </button>
       </div>
     </div>

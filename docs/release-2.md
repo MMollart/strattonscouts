@@ -12,6 +12,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | `0005_pricing_engine.sql` | FR02 Advanced pricing engine |
 | `0006_organisation_pricing.sql` | FR14 Organisation-specific pricing |
 | `0007_availability_rules.sql` | FR03 Advanced availability rules |
+| `0008_provisional_bookings.sql` | FR04 Provisional bookings & automatic expiry |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -237,4 +238,51 @@ overridden. Booking details show the override history to administrators.
   blank means no limit (simplest of: per resource, global, or per category).
 - Rules are managed under Admin → Resources (*Recurring availability rules*,
   and *Booking limits* per resource) rather than on a new page.
+
+## FR04 – Provisional bookings & automatic expiry
+
+**Statuses.** `provisional` and `expired` join the Release 1 statuses.
+Bookings gain `expires_at`; resources gain `provisional_expiry_hours`.
+
+**Workflow.** On the booking form a customer ticks *Hold this time
+provisionally*. The request goes through exactly the same validation and
+atomic insert as any booking (pricing, restrictions, closures, conflicts), is
+stored as `provisional` with an expiry, and the customer gets the *provisional
+booking* email. An administrator with `bookings.approve` confirms it from
+Admin → Bookings (*Confirm*). Confirmation revalidates conflicts and closures
+in the same guarded UPDATE as Release 1 approvals, and is refused once the hold
+has lapsed. The customer gets the confirmation email (not the "approved" one,
+so they never receive both). Customers and admins can cancel a live hold.
+
+**Expiry period.** Global setting *Provisional booking hold (hours)* (Admin →
+Settings, default 48) → per-resource override (Admin → Resources → *Booking
+limits*) → per-booking override by an admin with `bookings.manage`, either
+when booking for a customer or afterwards with *Change hold*. A hold never
+runs past the booking's own start time.
+
+**Release and idempotency.** Availability SQL counts a provisional booking as
+active only while `expires_at` is in the future (`activeBookingSql`), so the
+resource is released at the expiry instant, whether or not the scheduler has
+run, and a concurrent request can never slip past a live hold (the atomic
+insert evaluates the same condition). APIs report a lapsed hold as `expired`
+straight away. The scheduler then marks it `expired` with a status-guarded
+UPDATE, writes the `expired` event only if that UPDATE changed the row, and
+sends the *provisional expiry* email with a per-booking dedupe key. Running
+it twice, or two runs overlapping, does nothing extra. An expired hold cannot
+be confirmed or extended, so it can never be revived over a later booking.
+Expired bookings stay in every booking list as history.
+
+**Scheduler Worker.** Pages Functions cannot run on a Cron Trigger, so
+`workers/scheduler` is a small separate Worker (chosen as the simplest of: a
+separate Worker sharing the D1 database and library code, a Worker that calls
+a secret-protected Pages endpoint, or an external cron service). It runs every
+5 minutes against the same D1 database. It is deployed separately from Pages:
+
+```sh
+npm run scheduler:deploy   # wrangler deploy --config workers/scheduler/wrangler.toml --env production
+```
+
+When email sending is configured, give the Worker the same `EMAIL_PROVIDER`,
+`EMAIL_FROM` and `EMAIL_API_KEY` as the Pages project
+(`npx wrangler secret put EMAIL_API_KEY --config workers/scheduler/wrangler.toml --env production`).
 

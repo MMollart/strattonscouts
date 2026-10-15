@@ -8,7 +8,27 @@ import type { Env } from './http';
  * guards can run as one atomic statement (see createBookingAtomic).
  */
 
-export const ACTIVE_STATUSES = ['pending_approval', 'confirmed'] as const;
+export const ACTIVE_STATUSES = ['pending_approval', 'confirmed', 'provisional'] as const;
+
+/** The database clock as canonical ISO-8601 UTC, comparable with stored timestamps. */
+export const NOW_SQL = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`;
+
+/**
+ * A booking that holds its resource: pending approval, confirmed, or
+ * provisional and not yet past its expiry (FR04). A provisional booking stops
+ * blocking the moment it expires, before the scheduler marks it expired, so
+ * availability never depends on the cron having run.
+ */
+export function activeBookingSql(alias: string): string {
+  const a = alias ? `${alias}.` : '';
+  return `(${a}status IN ('pending_approval', 'confirmed') OR (${a}status = 'provisional' AND ${a}expires_at > ${NOW_SQL}))`;
+}
+
+/** The status to show: provisional bookings past their expiry read as expired. */
+export function effectiveStatusSql(alias: string): string {
+  const a = alias ? `${alias}.` : '';
+  return `(CASE WHEN ${a}status = 'provisional' AND ${a}expires_at <= ${NOW_SQL} THEN 'expired' ELSE ${a}status END)`;
+}
 
 /**
  * Resource ids blocked by `resourceId`: itself plus every resource it
@@ -25,7 +45,7 @@ export const BLOCKED_SET_SQL = `
  */
 export const CONFLICTING_BOOKING_SQL = `
   SELECT 1 FROM bookings ob
-  WHERE ob.status IN ('pending_approval', 'confirmed')
+  WHERE ${activeBookingSql('ob')}
     AND ob.resource_id IN (${BLOCKED_SET_SQL})
     AND ob.starts_at < ? AND ob.ends_at > ?
     AND ob.id <> ?`;
@@ -80,7 +100,7 @@ export async function loadBusyPeriods(
   const [bookings, closures] = await env.DB.batch<{ starts_at: string; ends_at: string }>([
     env.DB.prepare(
       `SELECT starts_at, ends_at FROM bookings
-       WHERE status IN ('pending_approval', 'confirmed')
+       WHERE ${activeBookingSql('')}
          AND resource_id IN (${BLOCKED_SET_SQL})
          AND starts_at < ? AND ends_at > ?
        ORDER BY starts_at`,

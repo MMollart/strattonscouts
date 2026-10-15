@@ -29,12 +29,13 @@ interface AdminBookingRow {
   customer_phone: string | null;
   organisation_id: string | null;
   organisation_name: string | null;
+  expires_at: string | null;
 }
 
 interface ResourceRow { id: string; name: string; is_active: boolean; }
 interface CustomerRow { id: string; full_name: string; email: string; category_label: string; }
 
-const STATUSES = ['pending_approval', 'confirmed', 'rejected', 'cancelled'];
+const STATUSES = ['pending_approval', 'provisional', 'confirmed', 'rejected', 'cancelled', 'expired'];
 
 export default function AdminBookings() {
   const { can } = useAuth();
@@ -76,6 +77,22 @@ export default function AdminBookings() {
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Action failed');
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  async function changeExpiry(b: AdminBookingRow) {
+    const hours = prompt('Hold this booking for how many more hours from now?', '24');
+    if (!hours) return;
+    const n = Number(hours);
+    if (!Number.isFinite(n) || n <= 0) return setError('Enter a number of hours');
+    setWorking(b.id);
+    try {
+      await api.put(`/admin/bookings/${b.id}/expiry`, { expires_at: new Date(Date.now() + n * 3_600_000).toISOString() });
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not change the hold');
     } finally {
       setWorking(null);
     }
@@ -153,6 +170,9 @@ export default function AdminBookings() {
                     <p className="text-xs text-gray-500">
                       Ref {b.reference} · {formatLondon(b.starts_at)} to {formatLondon(b.ends_at)} · {formatGBP(b.total_amount_pence)}
                     </p>
+                    {b.status === 'provisional' && b.expires_at && (
+                      <p className="text-xs font-bold text-scout-blue">Held until {formatLondon(b.expires_at)}</p>
+                    )}
                   </div>
                   <StatusBadge status={b.status} />
                 </div>
@@ -163,7 +183,13 @@ export default function AdminBookings() {
                       <button className="btn-danger" disabled={working === b.id} onClick={() => decide(b.id, 'reject')}>Reject</button>
                     </>
                   )}
-                  {(b.status === 'confirmed' || b.status === 'pending_approval') && can('bookings.manage') && (
+                  {b.status === 'provisional' && can('bookings.approve') && (
+                    <button className="btn-teal" disabled={working === b.id} onClick={() => decide(b.id, 'approve')}>Confirm</button>
+                  )}
+                  {b.status === 'provisional' && can('bookings.manage') && (
+                    <button className="btn-secondary" disabled={working === b.id} onClick={() => changeExpiry(b)}>Change hold</button>
+                  )}
+                  {['confirmed', 'pending_approval', 'provisional'].includes(b.status) && can('bookings.manage') && (
                     <button className="btn-secondary" disabled={working === b.id} onClick={() => cancel(b.id)}>Cancel</button>
                   )}
                 </div>
@@ -196,6 +222,8 @@ function BookForCustomer({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [overrideReason, setOverrideReason] = useState('');
+  const [provisional, setProvisional] = useState(false);
+  const [holdHours, setHoldHours] = useState('');
   const { can } = useAuth();
   const iso = windowToIso(win);
   const availability = useAvailability(resourceId || undefined, iso);
@@ -221,6 +249,8 @@ function BookForCustomer({
         starts_at: iso.startsAt,
         ends_at: iso.endsAt,
         on_behalf_of_user_id: customerId,
+        provisional,
+        provisional_expiry_hours: provisional && holdHours ? Number(holdHours) : undefined,
         override: canOverride && overrideReason.trim()
           ? { kinds: availability.violations.map((v) => v.kind), reason: overrideReason.trim() }
           : undefined,
@@ -270,6 +300,18 @@ function BookForCustomer({
           <p className="mt-1 text-xs text-gray-500">Leave blank to keep the restriction. Closures and clashing bookings can never be overridden.</p>
         </div>
       )}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={provisional} onChange={(e) => setProvisional(e.target.checked)} />
+          <span className="font-bold">Provisional hold</span>
+        </label>
+        {provisional && (
+          <div>
+            <label className="label" htmlFor="bfc-hold">Hold for (hours)</label>
+            <input id="bfc-hold" type="number" min={1} max={720} className="input w-32" value={holdHours} onChange={(e) => setHoldHours(e.target.value)} placeholder="Default" />
+          </div>
+        )}
+      </div>
       {customerId && <div className="rounded-xl bg-scout-off-white p-4"><PriceSummary price={quote} loading={quoting} error={quoteError} /></div>}
       <p className="text-xs text-gray-500">
         The booking is priced at the customer&apos;s category rate and follows the resource&apos;s approval setting. The customer is emailed.

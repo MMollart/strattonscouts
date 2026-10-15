@@ -8,6 +8,7 @@ interface Dashboard {
   upcoming_bookings: number;
   confirmed_bookings: number;
   pending_approval: number;
+  provisional: number;
   recent_bookings: {
     id: string;
     reference: string;
@@ -41,10 +42,11 @@ export default function AdminDashboard() {
         </nav>
       </div>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="Upcoming bookings" value={data.upcoming_bookings} />
         <Metric label="Confirmed" value={data.confirmed_bookings} />
         <Metric label="Awaiting approval" value={data.pending_approval} accent />
+        <Metric label="Provisional holds" value={data.provisional} />
       </div>
 
       <h2 className="mt-8 text-xl">Recent activity</h2>

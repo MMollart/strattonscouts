@@ -8,7 +8,9 @@ export type EmailTemplate =
   | 'booking_rejected'
   | 'booking_cancelled'
   | 'password_reset'
-  | 'organisation_invitation';
+  | 'organisation_invitation'
+  | 'provisional_booking'
+  | 'provisional_expired';
 
 interface TemplateDef {
   subject: string;
@@ -37,6 +39,14 @@ const TEMPLATES: Record<EmailTemplate, TemplateDef> = {
   booking_cancelled: {
     subject: 'Your booking {{ booking_reference }} has been cancelled',
     body: 'Hi {{ customer_name }},\n\nYour booking for {{ resource_name }} on {{ booking_date }} has been cancelled.\nReference: {{ booking_reference }}\n\nThank you,\nStratton Scouts',
+  },
+  provisional_booking: {
+    subject: 'Your provisional booking {{ booking_reference }} is held until {{ expiry_date }}',
+    body: 'Hi {{ customer_name }},\n\nWe are holding {{ resource_name }} for you on {{ booking_date }} ({{ booking_start_time }}–{{ booking_end_time }}) as a provisional booking.\nThe hold lasts until {{ expiry_date }}. If it has not been confirmed by then it will expire and the time will be released.\nTotal if confirmed: {{ booking_cost }}\nReference: {{ booking_reference }}\n\nThank you,\nStratton Scouts',
+  },
+  provisional_expired: {
+    subject: 'Your provisional booking {{ booking_reference }} has expired',
+    body: 'Hi {{ customer_name }},\n\nYour provisional booking for {{ resource_name }} on {{ booking_date }} was not confirmed in time, so it has expired and the time has been released.\nReference: {{ booking_reference }}\n\nYou are welcome to make a new booking if the time is still free.\n\nThank you,\nStratton Scouts',
   },
   organisation_invitation: {
     subject: '{{ inviter_name }} has invited you to join {{ organisation_name }}',

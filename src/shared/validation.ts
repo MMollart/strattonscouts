@@ -54,6 +54,10 @@ export const createBookingSchema = z
     organisation_id: z.string().min(1).nullable().optional(),
     // admin-only: override restrictions with a recorded reason (FR03)
     override: overrideSchema.nullable().optional(),
+    // hold the resource provisionally until it is confirmed or expires (FR04)
+    provisional: z.boolean().optional(),
+    // admin-only: hold period for this booking instead of the resource default
+    provisional_expiry_hours: z.number().int().min(1).max(720).nullable().optional(),
   })
   .refine((v) => new Date(v.ends_at).getTime() > new Date(v.starts_at).getTime(), {
     message: 'End time must be after start time',
@@ -230,4 +234,8 @@ export const availabilityRuleSchema = z
 export const restrictionsSchema = z.object({
   min_notice_minutes: z.number().int().min(0).max(525_600).nullable(),
   max_advance_days: z.number().int().min(1).max(3650).nullable(),
+  // FR04: blank uses the global provisional_expiry_hours setting
+  provisional_expiry_hours: z.number().int().min(1).max(720).nullable().optional(),
 });
+
+export const bookingExpirySchema = z.object({ expires_at: isoDateTime });

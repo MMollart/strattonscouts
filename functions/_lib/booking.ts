@@ -12,6 +12,7 @@ import type { PriceBreakdown } from '@shared/pricing';
 import { checkRestrictions } from './restrictions';
 import type { RestrictionKind, RuleViolation } from '@shared/availability-rules';
 import { OVERRIDABLE } from '@shared/availability-rules';
+import { provisionalExpiry, provisionalHoldHours } from './provisional';
 
 /** An authorised administrator's override of booking restrictions (FR03). */
 export interface RestrictionOverride {
@@ -30,6 +31,10 @@ export interface CreateBookingParams {
   organisationId?: string | null;
   /** Restrictions to override; the caller has checked availability.manage. */
   override?: RestrictionOverride | null;
+  /** Hold the resource provisionally until confirmed or expired (FR04). */
+  provisional?: boolean;
+  /** Hold period for this booking; the caller has checked bookings.manage. */
+  provisionalExpiryHours?: number | null;
 }
 
 export type CreateBookingFailure = {
@@ -48,6 +53,7 @@ export type CreateBookingResult =
       totalPence: number;
       startsAt: string;
       endsAt: string;
+      expiresAt: string | null;
       price: PriceBreakdown;
     }
   | CreateBookingFailure;
@@ -61,6 +67,8 @@ export interface BookingDraft {
   startsAt: string;
   endsAt: string;
   status: BookingStatus;
+  /** When a provisional hold lapses; null for every other status. */
+  expiresAt: string | null;
   categoryId: string;
   price: PriceBreakdown;
   organisationId: string | null;
@@ -84,8 +92,8 @@ export function bookingInsertStatements(env: Env, d: BookingDraft): D1PreparedSt
     `INSERT INTO bookings (id, reference, user_id, resource_id, starts_at, ends_at, status, category_id, pricing_model,
                            unit_price_pence, total_amount_pence, approved_by, cancelled_by, created_at, updated_at,
                            organisation_id, created_by, base_amount_pence, discount_pence, discount_label,
-                           pricing_rate_id, pricing_discount_id, price_breakdown, organisation_pricing_id)
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                           pricing_rate_id, pricing_discount_id, price_breakdown, organisation_pricing_id, expires_at)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
      WHERE NOT EXISTS (${CONFLICTING_BOOKING_SQL})
        AND NOT EXISTS (${OVERLAPPING_CLOSURE_SQL})`,
   ).bind(
@@ -111,6 +119,7 @@ export function bookingInsertStatements(env: Env, d: BookingDraft): D1PreparedSt
     d.price.pricing_discount_id,
     JSON.stringify(d.price),
     d.price.organisation_pricing_id,
+    d.expiresAt,
     d.resourceId,
     d.resourceId,
     d.resourceId,
@@ -170,9 +179,9 @@ export async function prepareBooking(
   const startsAt = canonicalIso(params.startsAt);
   const endsAt = canonicalIso(params.endsAt);
 
-  const resource = await env.DB.prepare('SELECT id, is_active, requires_approval FROM resources WHERE id = ?')
+  const resource = await env.DB.prepare('SELECT id, is_active, requires_approval, provisional_expiry_hours FROM resources WHERE id = ?')
     .bind(params.resourceId)
-    .first<{ id: string; is_active: number; requires_approval: number }>();
+    .first<{ id: string; is_active: number; requires_approval: number; provisional_expiry_hours: number | null }>();
   if (!resource) return { ok: false, code: 'resource_not_found', message: 'Resource not found' };
   if (!resource.is_active) return { ok: false, code: 'inactive', message: 'Resource is not available' };
 
@@ -199,7 +208,18 @@ export async function prepareBooking(
     .first();
   if (closure) return { ok: false, code: 'closure', message: 'Resource is unavailable for this period' };
 
-  const status: BookingStatus = resource.requires_approval ? 'pending_approval' : 'confirmed';
+  // A provisional hold (FR04) is confirmed later by an administrator, which
+  // also stands in for approval on resources that require it.
+  let status: BookingStatus = resource.requires_approval ? 'pending_approval' : 'confirmed';
+  let expiresAt: string | null = null;
+  if (params.provisional) {
+    if (Date.parse(startsAt) <= Date.now()) {
+      return { ok: false, code: 'restricted', message: 'A provisional booking must start in the future' };
+    }
+    status = 'provisional';
+    const hours = params.provisionalExpiryHours ?? (await provisionalHoldHours(env, resource.provisional_expiry_hours));
+    expiresAt = provisionalExpiry(Date.now(), hours, startsAt);
+  }
   return {
     ok: true,
     requiresApproval: !!resource.requires_approval,
@@ -211,11 +231,12 @@ export async function prepareBooking(
       startsAt,
       endsAt,
       status,
+      expiresAt,
       categoryId: quote.categoryId,
       price: quote.breakdown,
       organisationId: params.organisationId ?? null,
       actorId: params.actorId,
-      eventType: status === 'confirmed' ? 'confirmed' : 'created',
+      eventType: status === 'confirmed' ? 'confirmed' : status === 'provisional' ? 'provisional' : 'created',
       overrides: restrictions.overrides,
     },
   };
@@ -238,6 +259,7 @@ export async function createBookingAtomic(params: CreateBookingParams): Promise<
     totalPence: d.price.total_pence,
     startsAt: d.startsAt,
     endsAt: d.endsAt,
+    expiresAt: d.expiresAt,
     price: d.price,
   };
 }

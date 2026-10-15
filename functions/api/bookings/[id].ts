@@ -2,6 +2,7 @@ import type { Env } from '../../_lib/http';
 import { error, json } from '../../_lib/http';
 import { getAuthUser } from '../../_lib/auth';
 import { bookingAccess } from '../../_lib/booking-access';
+import { effectiveStatusSql } from '../../_lib/availability-sql';
 
 // View a single booking: its customer, members of its organisation, or admins.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request, params }) => {
@@ -10,7 +11,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request, params })
   const id = String(params.id);
 
   const booking = await env.DB.prepare(
-    `SELECT b.*, r.name AS resource_name, u.full_name AS customer_name, u.email AS customer_email,
+    `SELECT b.*, ${effectiveStatusSql('b')} AS status, r.name AS resource_name, u.full_name AS customer_name, u.email AS customer_email,
             o.name AS organisation_name
      FROM bookings b JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id
      LEFT JOIN organisations o ON o.id = b.organisation_id

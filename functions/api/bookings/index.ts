@@ -6,6 +6,8 @@ import { createBookingAtomic } from '../../_lib/booking';
 import { bookingTimeParams, sendEmail } from '../../_lib/email';
 import { getMembershipRole } from '../../_lib/organisations';
 import { formatGBP } from '@shared/pricing';
+import { formatLondon } from '@shared/londonTime';
+import { effectiveStatusSql } from '../../_lib/availability-sql';
 
 // The signed-in customer's personal bookings plus bookings of every
 // organisation they belong to.
@@ -14,7 +16,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   if (!user) return error('Not authenticated', 401);
   const rows = await env.DB.prepare(
     `SELECT b.id, b.reference, b.resource_id, r.name AS resource_name, b.starts_at, b.ends_at,
-            b.status, b.total_amount_pence, b.created_at, b.organisation_id, o.name AS organisation_name,
+            ${effectiveStatusSql('b')} AS status, b.expires_at, b.total_amount_pence, b.created_at, b.organisation_id, o.name AS organisation_name,
             u.full_name AS booked_by, (b.user_id = ?) AS is_mine
      FROM bookings b
      JOIN resources r ON r.id = b.resource_id
@@ -62,6 +64,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     return error('Only authorised administrators can override booking restrictions', 403);
   }
 
+  // Setting a booking's own hold period is an administrator action (FR04).
+  if (parsed.data.provisional_expiry_hours && !can(user, 'bookings.manage')) {
+    return error('Only administrators can set a provisional hold period', 403);
+  }
+
   const result = await createBookingAtomic({
     env,
     userId: customerId,
@@ -71,6 +78,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     actorId: user.id,
     organisationId,
     override: parsed.data.override ?? null,
+    provisional: parsed.data.provisional ?? false,
+    provisionalExpiryHours: parsed.data.provisional ? (parsed.data.provisional_expiry_hours ?? null) : null,
   });
 
   if (!result.ok) {
@@ -89,11 +98,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     .first<{ email: string; full_name: string; resource_name: string; organisation_name: string | null }>();
 
   if (details) {
+    const template =
+      result.status === 'confirmed' ? 'booking_confirmation' : result.status === 'provisional' ? 'provisional_booking' : 'booking_request_received';
     await sendEmail(env, {
       to: details.email,
       bookingId: result.bookingId,
-      dedupeKey: `${result.bookingId}:${result.status === 'confirmed' ? 'booking_confirmation' : 'booking_request_received'}`,
-      template: result.status === 'confirmed' ? 'booking_confirmation' : 'booking_request_received',
+      dedupeKey: `${result.bookingId}:${template}`,
+      template,
       params: {
         customer_name: details.full_name,
         organisation_name: details.organisation_name ?? '',
@@ -102,12 +113,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
         ...bookingTimeParams(result.startsAt, result.endsAt),
         booking_cost: formatGBP(result.totalPence),
         booking_status: result.status,
+        expiry_date: result.expiresAt ? formatLondon(result.expiresAt) : '',
       },
     });
   }
 
   return json(
-    { id: result.bookingId, reference: result.reference, status: result.status, total_amount_pence: result.totalPence },
+    { id: result.bookingId, reference: result.reference, status: result.status, total_amount_pence: result.totalPence, expires_at: result.expiresAt },
     201,
   );
 };

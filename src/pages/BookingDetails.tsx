@@ -23,6 +23,7 @@ interface BookingDetail {
   created_at: string;
   organisation_name: string | null;
   can_manage: boolean;
+  expires_at: string | null;
   base_amount_pence: number | null;
   discount_pence: number;
   discount_label: string | null;
@@ -60,7 +61,7 @@ export default function BookingDetails() {
   if (!data) return null;
 
   const isUpcoming = new Date(data.starts_at).getTime() > Date.now();
-  const canCancel = (data.status === 'confirmed' || data.status === 'pending_approval') && data.can_manage && (can('bookings.manage') || isUpcoming);
+  const canCancel = ['confirmed', 'pending_approval', 'provisional'].includes(data.status) && data.can_manage && (can('bookings.manage') || isUpcoming);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -87,6 +88,18 @@ export default function BookingDetails() {
         )}
         <Row label="Total" value={formatGBP(data.total_amount_pence)} bold />
       </div>
+
+      {data.status === 'provisional' && data.expires_at && (
+        <p className="mt-4 rounded-lg bg-scout-blue/10 px-4 py-2 text-sm text-scout-blue">
+          This is a provisional booking. The time is held until {formatLondon(data.expires_at)} and will be released
+          automatically unless it is confirmed before then.
+        </p>
+      )}
+      {data.status === 'expired' && (
+        <p className="mt-4 rounded-lg bg-gray-100 px-4 py-2 text-sm text-gray-700">
+          This provisional booking was not confirmed in time and has expired. The time has been released.
+        </p>
+      )}
 
       {data.status === 'pending_approval' && (
         <p className="mt-4 rounded-lg bg-scout-yellow/20 px-4 py-2 text-sm text-yellow-800">

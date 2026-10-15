@@ -4,12 +4,14 @@ import type { AdminRole, Permission } from './permissions';
 export type PricingModel = 'hourly' | 'nightly' | 'fixed';
 export type ResourceType = 'individual' | 'combined';
 
-// Release 1 statuses. Schema permits future: provisional, expired, completed.
+// Release 1 statuses plus provisional holds and their expiry (FR04).
 export type BookingStatus =
   | 'pending_approval'
   | 'confirmed'
   | 'rejected'
-  | 'cancelled';
+  | 'cancelled'
+  | 'provisional'
+  | 'expired';
 
 export type { AdminRole as RoleName } from './permissions';
 
