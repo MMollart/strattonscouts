@@ -1,5 +1,5 @@
 import type { Env } from './http';
-import { adjustedAmount, computePrice, type DiscountRule, type OrganisationArrangement, type PriceBreakdown, type RateRule } from '@shared/pricing';
+import { discountedAmount, computePrice, type DiscountRule, type OrganisationArrangement, type PriceBreakdown, type RateRule } from '@shared/pricing';
 import { toArrangement, type OrganisationPricingRow } from './organisation-pricing';
 
 export type QuoteResult =
@@ -21,8 +21,8 @@ interface Dated {
  */
 export interface PricingContext {
   categoryId: string;
-  /** The price group's adjustment to the base price, in basis points. */
-  adjustmentBp: number;
+  /** The price group's discount off the full (public) price, in basis points. */
+  discountBp: number;
   rates: (RateRule & Dated)[];
   discounts: (DiscountRule & Dated)[];
   arrangements: (OrganisationPricingRow & { updated_at: string })[];
@@ -33,12 +33,12 @@ export async function loadPricingContext(
   args: { resourceId: string; userId: string; organisationId?: string | null },
 ): Promise<PricingContext | null> {
   const holder = args.organisationId
-    ? await env.DB.prepare('SELECT h.pricing_category_id, pc.price_adjustment_bp FROM organisations h JOIN pricing_categories pc ON pc.id = h.pricing_category_id WHERE h.id = ?')
+    ? await env.DB.prepare('SELECT h.pricing_category_id, pc.discount_bp FROM organisations h JOIN pricing_categories pc ON pc.id = h.pricing_category_id WHERE h.id = ?')
         .bind(args.organisationId)
-        .first<{ pricing_category_id: string; price_adjustment_bp: number }>()
-    : await env.DB.prepare('SELECT h.pricing_category_id, pc.price_adjustment_bp FROM users h JOIN pricing_categories pc ON pc.id = h.pricing_category_id WHERE h.id = ?')
+        .first<{ pricing_category_id: string; discount_bp: number }>()
+    : await env.DB.prepare('SELECT h.pricing_category_id, pc.discount_bp FROM users h JOIN pricing_categories pc ON pc.id = h.pricing_category_id WHERE h.id = ?')
         .bind(args.userId)
-        .first<{ pricing_category_id: string; price_adjustment_bp: number }>();
+        .first<{ pricing_category_id: string; discount_bp: number }>();
   if (!holder) return null;
   const categoryId = holder.pricing_category_id;
 
@@ -58,7 +58,7 @@ export async function loadPricingContext(
   ]);
   return {
     categoryId,
-    adjustmentBp: holder.price_adjustment_bp,
+    discountBp: holder.discount_bp,
     rates: rates.results as unknown as PricingContext['rates'],
     discounts: discounts.results as unknown as PricingContext['discounts'],
     arrangements: args.organisationId ? (arrangements.results as unknown as PricingContext['arrangements']) : [],
@@ -85,8 +85,8 @@ export function quoteFromContext(ctx: PricingContext, startsAt: string, endsAt: 
   const at = startsAt;
   const rate = ctx.rates.filter(effectiveAt(at)).sort(newestFirst)[0];
   const breakdown = computePrice({
-    // The resource's base price, adjusted for the customer's price group.
-    categoryRate: rate ? { id: rate.id, pricing_model: rate.pricing_model, amount_pence: adjustedAmount(rate.amount_pence, ctx.adjustmentBp) } : null,
+    // The resource's base price, less the customer's price group discount.
+    categoryRate: rate ? { id: rate.id, pricing_model: rate.pricing_model, amount_pence: discountedAmount(rate.amount_pence, ctx.discountBp) } : null,
     generalDiscounts: ctx.discounts.filter(effectiveAt(at)).map(({ id, label, discount_type, value }) => ({ id, label, discount_type, value })),
     arrangement: arrangementAt(ctx.arrangements, at),
     startsAt,
@@ -99,7 +99,7 @@ export function quoteFromContext(ctx: PricingContext, startsAt: string, endsAt: 
 /**
  * Server-side price calculation (FR02 §3.4). Identifies the customer's (or
  * organisation's) price group, the base rate effective at the booking start
- * adjusted by that group's percentage,
+ * less that group's discount,
  * any organisation-specific arrangement and eligible discounts, and returns
  * the full breakdown.
  */

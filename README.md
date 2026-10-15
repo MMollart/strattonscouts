@@ -91,8 +91,8 @@ tests/                 Vitest suites (pricing, availability, booking concurrency
    the six resources (Whole Venue, Small Hall, Main Hall, Kitchen, Event Field,
    Camping), illustrative prices, and the mandatory conflict matrix
    (self-conflicts plus the Whole Venue relationships). Migration 0014 turns
-   those prices into one base price per resource (the Scouts price) and a
-   percentage per pricing category; see docs/release-2.md.
+   those prices into one full price per resource (the public price) and a
+   discount per pricing category; see docs/release-2.md.
 
 4. **Run the frontend dev server**
 

@@ -10,8 +10,8 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request, params })
   if (user instanceof Response) return user;
   const input = await parseBody(request, categoryCreateSchema.omit({ name: true }));
   if (input instanceof Response) return input;
-  const res = await env.DB.prepare('UPDATE pricing_categories SET label = ?, sort_order = ?, is_active = ?, price_adjustment_bp = ? WHERE id = ?')
-    .bind(input.label, input.sort_order, input.is_active ? 1 : 0, input.price_adjustment_bp, String(params.id))
+  const res = await env.DB.prepare('UPDATE pricing_categories SET label = ?, sort_order = ?, is_active = ?, discount_bp = ? WHERE id = ?')
+    .bind(input.label, input.sort_order, input.is_active ? 1 : 0, input.discount_bp, String(params.id))
     .run();
   if (res.meta.changes !== 1) return error('Category not found', 404);
   return json({ ok: true });

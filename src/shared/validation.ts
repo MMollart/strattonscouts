@@ -181,7 +181,7 @@ export const categoryCreateSchema = z.object({
   sort_order: z.number().int().min(0).max(1000).default(100),
   is_active: z.boolean().default(true),
   // percentage adjustment to each resource's base price, in basis points (-10000 = free)
-  price_adjustment_bp: z.number().int().min(-10_000).max(100_000).default(0),
+  discount_bp: z.number().int().min(0).max(10_000).default(0),
 });
 
 export const quoteSchema = z

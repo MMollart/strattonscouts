@@ -53,7 +53,7 @@ describe('booking allocation', () => {
     const r = await book('u1', 'res_main');
     expect(r).toMatchObject({ ok: true, status: 'confirmed', totalPence: 2000 });
     const publicPrice = await book('u2', 'res_small');
-    expect(publicPrice).toMatchObject({ ok: true, totalPence: 2420 }); // base 500/h +142% for public
+    expect(publicPrice).toMatchObject({ ok: true, totalPence: 2000 }); // full price 1000/h for public
   });
 
   it('enters Pending Approval and reserves the resource (AC14, AC15)', async () => {

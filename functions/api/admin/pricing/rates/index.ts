@@ -6,7 +6,7 @@ import { exists, isoOrNull } from '../../../../_lib/crud';
 import { pricingRateSchema } from '@shared/validation';
 
 // Admin: list base prices, optionally for one resource. Each price group's
-// price is derived from these with the group's percentage adjustment.
+// price is derived from these by taking off the group's discount.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   const user = await requirePermission(env, request, 'finance.view');
   if (user instanceof Response) return user;

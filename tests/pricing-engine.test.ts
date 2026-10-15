@@ -65,7 +65,28 @@ describe('pricing engine against D1 (FR02)', () => {
     await dispose();
   });
 
-  it('migrates Release 1 prices into rates unchanged', async () => {
+  it('migrates to one full price per resource and a discount per group (0014)', async () => {
+    const migrated = await createTestEnv({ migratedPrices: true });
+    try {
+      // Public prices become the full prices, unchanged.
+      const main = await migrated.db.prepare("SELECT pricing_model, amount_pence FROM base_rates WHERE resource_id = 'res_main'").all();
+      expect(main.results).toEqual([{ pricing_model: 'hourly', amount_pence: 2500 }]);
+      // Each group's discount averages its old prices against the public ones.
+      const cats = await migrated.db.prepare('SELECT id, discount_bp FROM pricing_categories ORDER BY sort_order').all();
+      expect(cats.results).toEqual([
+        { id: 'cat_scouts', discount_bp: 5800 },
+        { id: 'cat_community', discount_bp: 3200 },
+        { id: 'cat_public', discount_bp: 0 },
+      ]);
+      await addUser(migrated.db, 'm1');
+      const q = await quotePrice(migrated.env, { resourceId: 'res_main', userId: 'm1', ...day });
+      expect(q).toMatchObject({ ok: true, breakdown: { unit_price_pence: 1050, total_pence: 3150 } });
+    } finally {
+      await migrated.dispose();
+    }
+  });
+
+  it('prices each group from the full price less its discount', async () => {
     const q = await quotePrice(env, { resourceId: 'res_main', userId: 'u1', ...day });
     expect(q).toMatchObject({ ok: true, breakdown: { pricing_model: 'hourly', unit_price_pence: 1000, total_pence: 3000 } });
     const res = await call(publicResource.onRequestGet, { env, params: { slug: 'main-hall' } });
@@ -76,9 +97,10 @@ describe('pricing engine against D1 (FR02)', () => {
     const cookie = await sessionFor(env, 'super');
     const add = await call(rates.onRequestPost, {
       env, cookie,
-      body: { resource_id: 'res_main', pricing_model: 'fixed', amount_pence: 7000, effective_from: '2027-03-01T00:00:00Z', effective_to: '2027-04-01T00:00:00Z' },
+      body: { resource_id: 'res_main', pricing_model: 'fixed', amount_pence: 14000, effective_from: '2027-03-01T00:00:00Z', effective_to: '2027-04-01T00:00:00Z' },
     });
     expect(add.status).toBe(201);
+    // A full price of £140; Scouts pay half in the test prices.
     expect((await quotePrice(env, { resourceId: 'res_main', userId: 'u1', ...day }))).toMatchObject({ breakdown: { pricing_model: 'fixed', total_pence: 7000 } });
     // Outside the range the original rate applies.
     expect((await quotePrice(env, { resourceId: 'res_main', userId: 'u1', startsAt: '2027-04-02T10:00:00Z', endsAt: '2027-04-02T11:00:00Z' }))).toMatchObject({ breakdown: { pricing_model: 'hourly', total_pence: 1000 } });
@@ -97,7 +119,7 @@ describe('pricing engine against D1 (FR02)', () => {
     const booking = await createBookingAtomic({ env, userId: 'u1', resourceId: 'res_main', ...day, actorId: 'u1' });
     expect(booking).toMatchObject({ ok: true, totalPence: 2250 });
     const row = await db.prepare('SELECT base_amount_pence, discount_pence, discount_label, total_amount_pence, pricing_rate_id, pricing_discount_id, price_breakdown FROM bookings').first<Record<string, unknown>>();
-    expect(row).toMatchObject({ base_amount_pence: 3000, discount_pence: 750, discount_label: 'Spring offer', total_amount_pence: 2250, pricing_rate_id: 'rate_pr_main_s' });
+    expect(row).toMatchObject({ base_amount_pence: 3000, discount_pence: 750, discount_label: 'Spring offer', total_amount_pence: 2250, pricing_rate_id: 'rate_pr_main_p' });
     expect(JSON.parse(row!.price_breakdown as string)).toMatchObject({ quantity: 3, total_pence: 2250 });
   });
 

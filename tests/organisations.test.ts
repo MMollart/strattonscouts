@@ -185,7 +185,7 @@ describe('organisation bookings (FR01)', () => {
     await addMember(id, 'member');
     // Member is in the public category personally; the organisation is Scouts.
     const personal = await call(bookings.onRequestPost, { env, cookie: cookies.member, body: { resource_id: 'res_main', ...window } });
-    expect(personal.body.total_amount_pence).toBe(4840);
+    expect(personal.body.total_amount_pence).toBe(4000);
     const orgBooking = await call(bookings.onRequestPost, {
       env, cookie: cookies.member,
       body: { resource_id: 'res_small', ...window, organisation_id: id },

@@ -19,7 +19,7 @@ can be applied incrementally (`npm run db:migrate:local` / `:remote`).
 | *(none)* | FR09 Admin calendar (reads existing tables) |
 | `0012_assets.sql` | FR07 Physical asset management |
 | `0013_booking_groups.sql` | Several resources in one booking |
-| `0014_base_prices.sql` | One base price per resource, adjusted per price group |
+| `0014_base_prices.sql` | One full (public) price per resource, with a discount per price group |
 
 ## FR08 – Advanced admin roles & permissions
 
@@ -515,31 +515,32 @@ combined. The customer gets one email per outcome (confirmed, awaiting
 approval, provisional) naming every resource it covers, rather than one
 email per resource. Recurring bookings remain single-resource.
 
-## One base price per resource
+## One full price per resource, with group discounts
 
 **Before.** Admins entered a separate price for every resource and price
 group, so a price change meant editing up to three rows per resource.
 
-**Now.** Each resource has one base price (`base_rates`: charging model,
-amount, effective from/to, active). Each pricing category has a percentage
-adjustment (`pricing_categories.price_adjustment_bp`, in basis points):
-0% pays the base price, +50% pays half as much again, −25% a quarter less,
-−100% is free. The pricing engine applies the customer's (or
-organisation's) category adjustment to the base price, rounded to the
-penny, before discounts and organisation arrangements, which work as
-before. Admin → Pricing → Base prices sets the price and previews what
-each group pays; Admin → Pricing → Categories sets the percentages.
+**Now.** Each resource has one full price (`base_rates`: charging model,
+amount, effective from/to, active), which the general public pays. Each
+pricing category has a percentage discount off it
+(`pricing_categories.discount_bp`, in basis points, 0 to 10000): 0% pays
+full price, 25% pays a quarter less, 100% is free. The pricing engine takes
+the customer's (or organisation's) group discount off the full price,
+rounded to the penny, before the separate dated discounts and organisation
+arrangements, which work as before. Admin → Pricing → Prices sets the full
+price and previews what each group pays; Admin → Pricing → Categories sets
+each group's discount.
 
-**Migration 0014.** The base price is the price of the lowest-ordered
-category that priced each resource (Scouts), so Scouts prices are
-unchanged. Each other category's percentage is the average of its old
-price divided by the base price over the resources where both were in
-force, with the same charging model, rounded to a whole percent. With the
-seed prices that gives Community +64% and Public +142%, so some Community
-and Public prices move a little (Public Main Hall was £25.00/h, now
-£24.20/h; Public Small Hall was £15.00/h, now £12.10/h). Existing bookings
-keep the price agreed when they were made. `pricing_rates` is kept but no
-longer read.
+**Migration 0014.** The full price is the price of the highest-ordered
+category that priced each resource (General Public), so public prices are
+unchanged. Each other category's discount is 100% less the average of its
+old price divided by the public price, over the resources where both were
+in force with the same charging model, rounded to a whole percent. With
+the seed prices that gives Scouts 58% off and Community 32% off, so some
+Scouts and Community prices move a little (Scouts Main Hall was £10.00/h,
+now £10.50/h; Scouts Small Hall was £5.00/h, now £6.30/h). Existing
+bookings keep the price agreed when they were made. `pricing_rates` is
+kept but no longer read.
 
 ## Shrinking large images on upload
 
