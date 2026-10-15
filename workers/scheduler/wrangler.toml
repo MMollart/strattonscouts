@@ -3,7 +3,7 @@
 #   npx wrangler deploy --config workers/scheduler/wrangler.toml --env production
 # It uses the same D1 databases as the Pages project (wrangler.toml at the
 # repository root). Email settings must match the Pages project's variables
-# and secrets (EMAIL_PROVIDER, EMAIL_FROM, EMAIL_API_KEY) once email sending
+# and secrets (EMAIL_PROVIDER, EMAIL_FROM, MS_TENANT_ID, MS_CLIENT_ID, EMAIL_API_KEY) once email sending
 # is configured.
 
 name = "strattonscouts-scheduler"

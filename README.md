@@ -70,9 +70,11 @@ tests/                 Vitest suites (pricing, availability, booking concurrency
    | Variable               | Purpose                                                        |
    | ---------------------- | -------------------------------------------------------------- |
    | `APP_BASE_URL`         | Base URL used in emails / password-reset links                 |
-   | `EMAIL_PROVIDER`       | `console` (logs emails) or a real provider e.g. `resend`       |
-   | `EMAIL_API_KEY`        | Provider API key (**secret**)                                  |
-   | `EMAIL_FROM`           | From address for outbound mail                                 |
+   | `EMAIL_PROVIDER`       | `console` (logs emails), `office365` (Microsoft Graph) or `resend` |
+   | `EMAIL_API_KEY`        | Provider API key; for `office365`, the app registration's client secret (**secret**) |
+   | `EMAIL_FROM`           | From address; for `office365`, the mailbox that sends (e.g. a shared mailbox) |
+   | `MS_TENANT_ID`         | `office365` only: the Microsoft 365 tenant (directory) ID       |
+   | `MS_CLIENT_ID`         | `office365` only: the app registration's application (client) ID |
    | `DATA_ENCRYPTION_KEY`  | Key used to encrypt contact details at rest (**secret**; required in production, the API refuses requests without it) |
    | `BOOTSTRAP_ADMIN_TOKEN`| One-time token guarding the initial Super Admin bootstrap (**secret**) |
 
@@ -196,7 +198,8 @@ Development and production use **isolated** D1 databases and R2 buckets.
    wrangler pages secret put BOOTSTRAP_ADMIN_TOKEN
    ```
 
-   Set non-secret vars (`APP_BASE_URL`, `EMAIL_PROVIDER`, `EMAIL_FROM`) in the
+   Set non-secret vars (`APP_BASE_URL`, `EMAIL_PROVIDER`, `EMAIL_FROM`, and for
+   Office 365 `MS_TENANT_ID` and `MS_CLIENT_ID`) in the
    Pages project settings or via `wrangler.toml` `[env.production.vars]`.
 
 4. **Deploy** by connecting the repository to a Cloudflare Pages project (build
@@ -220,3 +223,29 @@ Development and production use **isolated** D1 databases and R2 buckets.
 - Baseline security headers are applied globally in `functions/_middleware.ts`.
 - Transactional emails are idempotent (a dedupe key prevents duplicates on
   retry) and failure-tolerant (a send failure never rolls back a booking).
+
+## Sending email through Office 365
+
+Email is sent with Microsoft Graph (`sendMail`) using an app registration, as
+Cloudflare Workers cannot use SMTP. One-off setup in Microsoft 365:
+
+1. In the [Entra admin centre](https://entra.microsoft.com), go to *App
+   registrations → New registration*. Name it "Stratton Scouts bookings",
+   single tenant, no redirect URI.
+2. Note the *Application (client) ID* and *Directory (tenant) ID*.
+3. *API permissions → Add a permission → Microsoft Graph → Application
+   permissions → Mail.Send*, then *Grant admin consent*.
+4. *Certificates & secrets → New client secret*. Copy the value (shown once)
+   and note its expiry date; renew it before then.
+5. Choose the sending mailbox, for example a shared mailbox
+   `bookings@yourdomain` (shared mailboxes need no licence).
+6. Recommended: limit the app to that mailbox so it cannot send as anyone
+   else. In Exchange Online PowerShell, create a mail-enabled security group
+   containing the mailbox, then run
+   `New-ApplicationAccessPolicy -AppId <client id> -PolicyScopeGroupId <group email> -AccessRight RestrictAccess -Description "Bookings app"`.
+7. Configure the site and the scheduler Worker with `EMAIL_PROVIDER=office365`,
+   `EMAIL_FROM=<mailbox>`, `MS_TENANT_ID`, `MS_CLIENT_ID` (plain variables) and
+   the client secret as the `EMAIL_API_KEY` secret.
+
+Sent emails appear in the mailbox's *Sent Items*. Graph returns no message
+id, so the history records Graph's request id instead.

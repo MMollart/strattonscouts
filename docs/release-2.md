@@ -288,7 +288,8 @@ npm run scheduler:deploy   # wrangler deploy --config workers/scheduler/wrangler
 ```
 
 When email sending is configured, give the Worker the same `EMAIL_PROVIDER`,
-`EMAIL_FROM` and `EMAIL_API_KEY` as the Pages project
+`EMAIL_FROM`, `MS_TENANT_ID`, `MS_CLIENT_ID` and `EMAIL_API_KEY` as the Pages
+project (see *Sending email through Office 365* in the README)
 (`npx wrangler secret put EMAIL_API_KEY --config workers/scheduler/wrangler.toml --env production`).
 
 ## FR05 – Recurring bookings
@@ -408,6 +409,14 @@ all). Each retry claims the row with a status-guarded UPDATE and the provider
 gets an idempotency key, so retries never produce duplicates. Template
 parameters are kept only while a retry is pending, and never for invitation
 or password reset emails, whose links are single-use secrets.
+
+**Office 365.** With `EMAIL_PROVIDER=office365` emails are sent from the
+`EMAIL_FROM` mailbox through Microsoft Graph using an app-only token
+(client credentials, cached until shortly before expiry). Throttling (429),
+outages (5xx) and an expired token (401) are retried; refused requests and
+missing configuration are recorded as failed and not retried. Graph has no
+idempotency key, so a send whose response was lost in transit could in rare
+cases be delivered twice on retry. Setup steps are in the README.
 
 **Payment reminder.** Admins with `bookings.manage` can send one from a
 confirmed, chargeable booking's page. Payment itself remains out of scope.

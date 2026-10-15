@@ -8,6 +8,9 @@ export interface Env {
   EMAIL_PROVIDER?: string;
   EMAIL_API_KEY?: string;
   EMAIL_FROM?: string;
+  /** Office 365 (Microsoft Graph) sending: the Entra ID tenant and app registration. */
+  MS_TENANT_ID?: string;
+  MS_CLIENT_ID?: string;
   DATA_ENCRYPTION_KEY?: string;
   BOOTSTRAP_ADMIN_TOKEN?: string;
 }
