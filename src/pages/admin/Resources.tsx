@@ -8,7 +8,7 @@ import { Spinner, ErrorState, EmptyState } from '../../components/ui';
 import { BookingWindowFields, type BookingWindow, windowToIso } from '../../components/BookingWindowFields';
 import { formatLondon, londonToday } from '@shared/londonTime';
 import { describeRule, parseDays } from '@shared/availability-rules';
-import { ancestorIds, wouldCreateLoop } from '@shared/hierarchy';
+import { ancestorIds, isWithin, parentOptions, wouldCreateLoop } from '@shared/hierarchy';
 
 interface ResourceRow {
   id: string;
@@ -37,6 +37,8 @@ export default function AdminResources() {
   const [rows, setRows] = useState<ResourceRow[]>([]);
   const [editing, setEditing] = useState<Draft | null>(null);
   const [limits, setLimits] = useState<ResourceRow | null>(null);
+  const [within, setWithin] = useState('');
+  const groups = parentOptions(rows);
 
   useEffect(() => { if (data) setRows(data); }, [data]);
 
@@ -56,9 +58,25 @@ export default function AdminResources() {
 
       {can('resources.manage') && <button className="btn-primary mt-4" onClick={() => setEditing({ ...EMPTY })}>Add resource</button>}
 
+      {groups.length > 0 && (
+        <div className="mt-6 max-w-xs">
+          <label className="label" htmlFor="admin-within">Show</label>
+          <select id="admin-within" className="input" value={within} onChange={(e) => setWithin(e.target.value)}>
+            <option value="">All resources</option>
+            {groups.map(({ node, depth }) => (
+              <option key={node.id} value={node.id}>
+                {'\u00a0\u00a0'.repeat(depth)}{node.name} and everything in it
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="mt-6 space-y-2">
         {rows.length === 0 && <EmptyState title="No resources yet" />}
-        {treeOrder(rows).map(({ row: r, depth }) => (
+        {treeOrder(rows)
+          .filter(({ row }) => !within || isWithin(row.id, within, (id) => ancestorIds(id, rows)))
+          .map(({ row: r, depth }) => (
           <div key={r.id} className="card flex flex-wrap items-center justify-between gap-2" style={{ marginLeft: `${Math.min(depth, 4) * 1.5}rem` }}>
             <div>
               <p className="font-black">{r.name} {!r.is_active && <span className="badge bg-gray-200 text-gray-600">inactive</span>}</p>
