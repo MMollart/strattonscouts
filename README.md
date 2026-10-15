@@ -6,7 +6,7 @@ availability, register, and book resources; administrators manage resources,
 pricing, availability, the conflict matrix, and booking approvals.
 
 > **Release 1 (MVP).** Online payments and automated recurring/series bookings
-> are intentionally out of scope for this release.
+> are intentionally out of scope for this release. 
 
 ## Tech stack
 
