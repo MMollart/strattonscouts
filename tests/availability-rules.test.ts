@@ -114,7 +114,7 @@ describe('availability rules against D1 (FR03)', () => {
     expect((await db.prepare('SELECT COUNT(*) AS c FROM availability_overrides').first<{ c: number }>())?.c).toBe(1);
   });
 
-  it('applies recurring restrictions on combined resources through the conflict matrix', async () => {
+  it('applies closed rules on a child to its parent but not its siblings', async () => {
     // Close the Main Hall every day 00:00-00:00; the Whole Venue is then unavailable too.
     await call(rulesApi.onRequestPost, { env, cookie: admin, body: { resource_id: 'res_main', rule_type: 'closed', days_of_week: [0, 1, 2, 3, 4, 5, 6], start_time: '00:00', end_time: '00:00' } });
     const w = nextWeek();

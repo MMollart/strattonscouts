@@ -4,22 +4,21 @@ import { evaluateRestrictions, type AvailabilityRule, type RuleViolation } from 
 
 /**
  * A resource's booking restrictions. Recurring closed periods propagate like
- * exceptional closures (through the conflict matrix to and from combined
- * resources such as the Whole Venue); opening hours apply only to the
- * resource they are set on.
+ * exceptional closures (up and down the resource hierarchy: a closed rule on
+ * the Whole Venue applies to every hall, and one on a hall applies to the
+ * Whole Venue); opening hours apply only to the resource they are set on.
  */
 export async function loadRestrictions(env: Env, resourceId: string) {
   const [resource, rules] = await env.DB.batch<Record<string, unknown>>([
     env.DB.prepare('SELECT min_notice_minutes, max_advance_days FROM resources WHERE id = ?').bind(resourceId),
     env.DB.prepare(
       `SELECT ar.id, ar.resource_id, ar.rule_type, ar.days_of_week, ar.start_time, ar.end_time, ar.valid_from, ar.valid_to, ar.label
-       FROM availability_rules ar JOIN resources cr ON cr.id = ar.resource_id
+       FROM availability_rules ar
        WHERE ar.is_active = 1 AND (
          ar.resource_id = ?
-         OR (ar.rule_type = 'closed' AND ar.resource_id IN (${BLOCKED_SET_SQL})
-             AND (cr.resource_type = 'combined' OR (SELECT resource_type FROM resources WHERE id = ?) = 'combined'))
+         OR (ar.rule_type = 'closed' AND ar.resource_id IN (${BLOCKED_SET_SQL}))
        )`,
-    ).bind(resourceId, resourceId, resourceId, resourceId, resourceId),
+    ).bind(resourceId, resourceId, resourceId, resourceId),
   ]);
   const r = resource.results[0] as { min_notice_minutes: number | null; max_advance_days: number | null } | undefined;
   return {

@@ -7,13 +7,14 @@ import { Spinner, ErrorState, EmptyState } from '../../components/ui';
 import { BookingWindowFields, type BookingWindow, windowToIso } from '../../components/BookingWindowFields';
 import { formatLondon, londonToday } from '@shared/londonTime';
 import { describeRule, parseDays } from '@shared/availability-rules';
+import { ancestorIds, wouldCreateLoop } from '@shared/hierarchy';
 
 interface ResourceRow {
   id: string;
   name: string;
   slug: string;
   description: string;
-  resource_type: 'individual' | 'combined';
+  parent_id: string | null;
   is_active: boolean;
   requires_approval: boolean;
   pricing_model: 'hourly' | 'nightly' | 'fixed';
@@ -25,7 +26,7 @@ interface ResourceRow {
 type Draft = Omit<ResourceRow, 'id'> & { id?: string };
 
 const EMPTY: Draft = {
-  name: '', slug: '', description: '', resource_type: 'individual',
+  name: '', slug: '', description: '', parent_id: null,
   is_active: true, requires_approval: false, pricing_model: 'hourly',
 };
 
@@ -56,12 +57,12 @@ export default function AdminResources() {
 
       <div className="mt-6 space-y-2">
         {rows.length === 0 && <EmptyState title="No resources yet" />}
-        {rows.map((r) => (
-          <div key={r.id} className="card flex flex-wrap items-center justify-between gap-2">
+        {treeOrder(rows).map(({ row: r, depth }) => (
+          <div key={r.id} className="card flex flex-wrap items-center justify-between gap-2" style={{ marginLeft: `${Math.min(depth, 4) * 1.5}rem` }}>
             <div>
               <p className="font-black">{r.name} {!r.is_active && <span className="badge bg-gray-200 text-gray-600">inactive</span>}</p>
               <p className="text-xs text-gray-500">
-                /{r.slug} · {r.resource_type} · {r.pricing_model}{r.requires_approval ? ' · requires approval' : ''}
+                /{r.slug}{r.parent_id ? ` · part of ${rows.find((p) => p.id === r.parent_id)?.name ?? 'another resource'}` : ''} · {r.pricing_model}{r.requires_approval ? ' · requires approval' : ''}
                 {r.min_notice_minutes ? ` · ${r.min_notice_minutes / 60}h notice` : ''}
                 {r.max_advance_days ? ` · up to ${r.max_advance_days} days ahead` : ''}
               </p>
@@ -89,6 +90,7 @@ export default function AdminResources() {
       {editing && (
         <ResourceEditor
           draft={editing}
+          resources={rows}
           onClose={() => setEditing(null)}
           onSaved={async () => { setEditing(null); await reload(); }}
         />
@@ -97,7 +99,27 @@ export default function AdminResources() {
   );
 }
 
-function ResourceEditor({ draft, onClose, onSaved }: { draft: Draft; onClose: () => void; onSaved: () => void }) {
+/** Resources with each child listed under its parent, and how deep it sits. */
+function treeOrder(rows: ResourceRow[]): { row: ResourceRow; depth: number }[] {
+  const ids = new Set(rows.map((r) => r.id));
+  const out: { row: ResourceRow; depth: number }[] = [];
+  const seen = new Set<string>();
+  const visit = (parentId: string | null, depth: number) => {
+    for (const row of rows) {
+      const parent = row.parent_id && ids.has(row.parent_id) ? row.parent_id : null;
+      if (parent !== parentId || seen.has(row.id)) continue;
+      seen.add(row.id);
+      out.push({ row, depth });
+      visit(row.id, depth + 1);
+    }
+  };
+  visit(null, 0);
+  // Anything left over sits in a loop; show it rather than hide it.
+  for (const row of rows) if (!seen.has(row.id)) out.push({ row, depth: 0 });
+  return out;
+}
+
+function ResourceEditor({ draft, resources, onClose, onSaved }: { draft: Draft; resources: ResourceRow[]; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState<Draft>(draft);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +141,7 @@ function ResourceEditor({ draft, onClose, onSaved }: { draft: Draft; onClose: ()
     setError(null);
     const payload = {
       name: form.name, slug: form.slug, description: form.description,
-      resource_type: form.resource_type, is_active: form.is_active,
+      parent_id: form.parent_id, is_active: form.is_active,
       requires_approval: form.requires_approval, pricing_model: form.pricing_model,
     };
     try {
@@ -173,10 +195,17 @@ function ResourceEditor({ draft, onClose, onSaved }: { draft: Draft; onClose: ()
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label" htmlFor="r-type">Type</label>
-            <select id="r-type" className="input" value={form.resource_type} onChange={(e) => setForm({ ...form, resource_type: e.target.value as Draft['resource_type'] })}>
-              <option value="individual">Individual</option>
-              <option value="combined">Combined</option>
+            <label className="label" htmlFor="r-parent">Part of</label>
+            <select id="r-parent" className="input" aria-describedby="r-parent-help" value={form.parent_id ?? ''} onChange={(e) => setForm({ ...form, parent_id: e.target.value || null })}>
+              <option value="">Nothing (top level)</option>
+              {resources
+                .filter((r) => !form.id || !wouldCreateLoop(form.id, r.id, resources))
+                .map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {[...ancestorIds(r.id, resources)].reverse().map((a) => `${resources.find((x) => x.id === a)?.name} › `).join('')}
+                    {r.name}
+                  </option>
+                ))}
             </select>
           </div>
           <div>
@@ -188,6 +217,10 @@ function ResourceEditor({ draft, onClose, onSaved }: { draft: Draft; onClose: ()
             </select>
           </div>
         </div>
+        <p id="r-parent-help" className="text-sm text-gray-600">
+          Booking a resource also makes everything it is part of, and everything that is part of it, unavailable at
+          the same time. Resources side by side (for example two halls) can still be booked separately.
+        </p>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />
           <span className="font-bold">Active (bookable by customers)</span>

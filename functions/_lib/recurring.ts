@@ -12,7 +12,7 @@ import type { BookingStatus } from '@shared/types';
 
 /**
  * Recurring bookings (FR05). Every occurrence is validated like a single
- * booking: conflicts through the conflict matrix, closures, availability
+ * booking: conflicts through the resource hierarchy, closures, availability
  * rules and advance limits, and pricing at its own date. Rules, busy periods
  * and prices are loaded once for the whole series so a long series stays
  * within D1's per-request query budget.

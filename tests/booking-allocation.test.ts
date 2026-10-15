@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createBookingAtomic } from '../functions/_lib/booking';
 import { transitionBooking } from '../functions/_lib/lifecycle';
-import { syncMandatoryConflicts } from '../functions/_lib/conflicts';
 import { loadBusyPeriods } from '../functions/_lib/availability-sql';
 import type { Env } from '../functions/_lib/http';
 import { addUser, createTestEnv } from './helpers/d1';
@@ -9,7 +8,7 @@ import { addUser, createTestEnv } from './helpers/d1';
 /**
  * Integration tests for the booking engine against a real D1 database
  * (Miniflare/workerd SQLite) with the project's migrations and seed applied.
- * Seed resources: res_whole (combined, approval), res_small, res_main,
+ * Seed resources: res_whole (approval; every other resource is part of it), res_small, res_main,
  * res_kitchen (auto-confirm, hourly), res_field, res_camping (approval, nightly).
  */
 
@@ -69,15 +68,12 @@ describe('booking allocation', () => {
     expect(await book('u1', 'res_camping', { startsAt: '2026-06-02T11:00:00.000Z', endsAt: '2026-06-03T10:00:00.000Z' })).toMatchObject({ ok: false, code: 'conflict' });
   });
 
-  it('allows different individual resources at the same time unless configured (AC10)', async () => {
+  it('allows sibling resources at the same time, but not a resource and its parent (AC10)', async () => {
     expect((await book('u1', 'res_main')).ok).toBe(true);
     expect((await book('u2', 'res_small')).ok).toBe(true);
     expect((await book('u1', 'res_kitchen')).ok).toBe(true);
 
-    await db.batch([
-      db.prepare("INSERT INTO resource_conflicts (id, resource_id, conflicts_with_id, is_mandatory, created_at) VALUES ('c1', 'res_field', 'res_camping', 0, '')"),
-      db.prepare("INSERT INTO resource_conflicts (id, resource_id, conflicts_with_id, is_mandatory, created_at) VALUES ('c2', 'res_camping', 'res_field', 0, '')"),
-    ]);
+    await db.prepare("UPDATE resources SET parent_id = 'res_field' WHERE id = 'res_camping'").run();
     expect((await book('u1', 'res_field')).ok).toBe(true);
     expect(await book('u2', 'res_camping')).toMatchObject({ ok: false, code: 'conflict' });
   });
@@ -199,13 +195,10 @@ describe('approval, rejection and cancellation', () => {
     expect(await transitionBooking(env, { bookingId: id, to: 'confirmed', actorId: 'admin', actorIsAdmin: true })).toMatchObject({ ok: false, code: 'closure' });
   });
 
-  it('revalidates on approval against conflicts configured since the request', async () => {
+  it('revalidates on approval against parents set since the request', async () => {
     const id = await pending('res_field');
     expect((await book('u2', 'res_main')).ok).toBe(true);
-    await db.batch([
-      db.prepare("INSERT INTO resource_conflicts (id, resource_id, conflicts_with_id, is_mandatory, created_at) VALUES ('c1', 'res_field', 'res_main', 0, '')"),
-      db.prepare("INSERT INTO resource_conflicts (id, resource_id, conflicts_with_id, is_mandatory, created_at) VALUES ('c2', 'res_main', 'res_field', 0, '')"),
-    ]);
+    await db.prepare("UPDATE resources SET parent_id = 'res_field' WHERE id = 'res_main'").run();
     expect(await transitionBooking(env, { bookingId: id, to: 'confirmed', actorId: 'admin', actorIsAdmin: true })).toMatchObject({ ok: false, code: 'conflict' });
   });
 
@@ -242,43 +235,14 @@ describe('approval, rejection and cancellation', () => {
   });
 });
 
-describe('mandatory conflicts for new resources', () => {
-  it('a newly added resource conflicts with the Whole Venue (AC09)', async () => {
-    const ts = new Date().toISOString();
-    await db.batch([
-      db.prepare("INSERT INTO resources (id, name, slug, description, resource_type, is_active, requires_approval, pricing_model, created_at, updated_at) VALUES ('res_new', 'Store', 'store', '', 'individual', 1, 0, 'hourly', ?, ?)").bind(ts, ts),
-      db.prepare("INSERT INTO pricing_rates (id, resource_id, category_id, pricing_model, amount_pence, effective_from, created_at, updated_at) VALUES ('p_new', 'res_new', 'cat_scouts', 'hourly', 100, '1970-01-01T00:00:00.000Z', ?, ?)").bind(ts, ts),
-    ]);
-    await syncMandatoryConflicts(env, 'res_new');
-
-    expect((await book('u1', 'res_whole')).ok).toBe(true);
-    expect(await book('u1', 'res_new')).toMatchObject({ ok: false, code: 'conflict' });
-    const edges = await db.prepare("SELECT resource_id, conflicts_with_id, is_mandatory FROM resource_conflicts WHERE resource_id = 'res_new' OR conflicts_with_id = 'res_new' ORDER BY resource_id, conflicts_with_id").all();
-    expect(edges.results).toEqual([
-      { resource_id: 'res_new', conflicts_with_id: 'res_new', is_mandatory: 1 },
-      { resource_id: 'res_new', conflicts_with_id: 'res_whole', is_mandatory: 1 },
-      { resource_id: 'res_whole', conflicts_with_id: 'res_new', is_mandatory: 1 },
-    ]);
-  });
-
-  it('downgrades Whole Venue edges when a resource stops being combined', async () => {
-    await db.prepare("UPDATE resources SET resource_type = 'individual' WHERE id = 'res_whole'").run();
-    await syncMandatoryConflicts(env, 'res_whole');
-    const row = await db.prepare("SELECT is_mandatory FROM resource_conflicts WHERE resource_id = 'res_whole' AND conflicts_with_id = 'res_main'").first<{ is_mandatory: number }>();
-    expect(row?.is_mandatory).toBe(0);
-    const self = await db.prepare("SELECT is_mandatory FROM resource_conflicts WHERE resource_id = 'res_whole' AND conflicts_with_id = 'res_whole'").first<{ is_mandatory: number }>();
-    expect(self?.is_mandatory).toBe(1);
-  });
-});
-
 describe('public availability data', () => {
   it('returns busy periods without any customer details (AC06)', async () => {
     await book('u1', 'res_whole');
     await addClosure('res_main', '2026-06-01T13:00:00.000Z', '2026-06-01T15:00:00.000Z');
     const busy = await loadBusyPeriods(env, 'res_main', '2026-06-01T00:00:00.000Z', '2026-06-02T00:00:00.000Z');
     expect(busy).toEqual([
-      { starts_at: win.startsAt, ends_at: win.endsAt, kind: 'booked' },
-      { starts_at: '2026-06-01T13:00:00.000Z', ends_at: '2026-06-01T15:00:00.000Z', kind: 'closed' },
+      { starts_at: win.startsAt, ends_at: win.endsAt, kind: 'booked', resource_name: 'Whole Venue', relation: 'parent' },
+      { starts_at: '2026-06-01T13:00:00.000Z', ends_at: '2026-06-01T15:00:00.000Z', kind: 'closed', resource_name: 'Main Hall', relation: 'self' },
     ]);
   });
 });

@@ -2,7 +2,7 @@ import type { Env } from './http';
 import { newId } from './http';
 import { abortIf, guardedBatch } from './txn';
 import { bookingInsertStatements, prepareBooking, type BookingDraft, type CreateBookingFailure, type CreateBookingParams } from './booking';
-import { BLOCKED_SET_SQL, CONFLICTING_BOOKING_SQL } from './availability-sql';
+import { ANCESTORS_SQL, CONFLICTING_BOOKING_SQL } from './availability-sql';
 
 export interface GroupBooking {
   bookingId: string;
@@ -27,14 +27,19 @@ export async function createBookingGroup(params: Omit<CreateBookingParams, 'reso
   const { env } = params;
   const ids = [...new Set(params.resourceIds)];
 
-  // Resources that block each other (a hall and the Whole Venue that contains it) cannot be booked together.
-  for (const [i, a] of ids.entries()) {
-    for (const b of ids.slice(i + 1)) {
-      const overlap = await env.DB.prepare(`SELECT 1 FROM (${BLOCKED_SET_SQL}) WHERE conflicts_with_id = ?`).bind(a, a, a, b).first();
-      if (overlap) {
-        const names = await resourceNames(env, [a, b]);
-        return { ok: false, code: 'conflict', message: `${names[a]} and ${names[b]} cannot be booked together because one includes the other.` };
-      }
+  // A resource and one it is part of (a hall and the Whole Venue) cannot be
+  // booked together: the parent already includes the child, so it would be
+  // charged twice.
+  const ancestors = await env.DB.batch<{ resource_id: string }>(ids.map((id) => env.DB.prepare(ANCESTORS_SQL).bind(id)));
+  for (const [i, child] of ids.entries()) {
+    const parent = ancestors[i].results.find((a) => ids.includes(a.resource_id))?.resource_id;
+    if (parent) {
+      const names = await resourceNames(env, [child, parent]);
+      return {
+        ok: false,
+        code: 'conflict',
+        message: `${names[child]} is part of ${names[parent]}, so they cannot be booked together. ${names[parent]} already includes it.`,
+      };
     }
   }
 

@@ -36,7 +36,7 @@ and uses `can(permission)` only to hide controls; the API is the authority.
 | `bookings.approve` | ✓ | ✓ | |
 | `bookings.manage` (amend/cancel, correct a customer's category) | ✓ | ✓ | |
 | `availability.manage` (closures, rules, overrides) | ✓ | ✓ | |
-| `resources.manage` (resources, images, conflict matrix) | ✓ | ✓ | |
+| `resources.manage` (resources, images, resource hierarchy) | ✓ | ✓ | |
 | `pricing.manage` | ✓ | | |
 | `assets.manage` | ✓ | ✓ | |
 | `email_templates.manage` | ✓ | | |
@@ -165,7 +165,7 @@ the full breakdown JSON. Release 1 bookings are backfilled (base = total,
 discount 0). Rate and discount changes never touch existing bookings.
 
 **Screens.** Admin → Pricing has tabs for Rates, Discounts, Organisation
-pricing (FR14), Categories and the Release 1 conflict matrix. Amounts are
+pricing (FR14) and Categories. Amounts are
 entered in pounds and stored in pence.
 
 ### Decisions
@@ -317,7 +317,7 @@ An end time at or before the start runs into the next morning.
 
 **Review and submit.** *Repeat this booking* on the booking form shows every
 date with its price or the reason it is unavailable (past, closure, clash
-through the conflict matrix, availability rule or advance limit, no price),
+through the resource hierarchy, availability rule or advance limit, no price),
 and the total. If any date is unavailable the customer either changes the
 pattern or explicitly ticks *Remove these dates and continue*. The API
 re-validates on submit and refuses (409, with every date's status) unless
@@ -509,7 +509,46 @@ with different rules.
 **All or nothing.** Every resource is validated exactly as a single booking
 (rules, closures, notice, provisional holds), then all of them are inserted
 in one guarded batch: if any resource is taken meanwhile, nothing is booked.
-Resources that include each other (a hall and the Whole Venue) cannot be
-combined. The customer gets one email per outcome (confirmed, awaiting
+A resource and anything it is part of (a hall and the Whole Venue) cannot be
+combined; see *Resource hierarchy* below. The customer gets one email per outcome (confirmed, awaiting
 approval, provisional) naming every resource it covers, rather than one
 email per resource. Recurring bookings remain single-resource.
+
+## Resource hierarchy
+
+The Release 1 conflict matrix and the *combined* resource type are replaced
+by a parent on each resource (Admin → Resources → Edit → *Part of*), for
+example:
+
+    Whole Venue
+      Indoor: Main Hall, Small Hall, Kitchen
+      Outdoor: Hammock Star, Event Field
+
+**Rule.** A booking or closure on a resource blocks every resource above it
+and every resource below it, at any depth, for the overlapping period only.
+Siblings stay independent: booking the Main Hall leaves the Small Hall,
+Kitchen and Outdoor free, while Indoor and the Whole Venue are taken. Closed
+availability rules follow the same rule; opening hours stay per resource. It
+applies to everyone, including the same customer, and within one booking a
+resource cannot be picked with its parent or any child, since the parent
+already includes (and charges for) the child.
+
+**Where it is enforced.** `BLOCKED_SET_SQL` in `functions/_lib/availability-sql.ts`
+walks the hierarchy with a recursive query inside the same atomic insert that
+guards every booking, approval, amendment and recurring series, so the
+interface cannot be bypassed. The booking page greys out resources that
+clash with the current selection and says why; availability answers and the
+calendar name the parent or child that is booked or closed (never who booked
+it).
+
+**Saving a parent.** A resource cannot be its own parent or sit under one of
+its own descendants (checked on save and again inside the update). Moving an
+existing resource under a new parent is refused when the two sides already
+hold overlapping upcoming bookings, because they would then double-book.
+
+**Migration (0015).** Builds parents from the old matrix: a resource's parent
+is the nearest resource it conflicted with that conflicted with more
+resources than it did, otherwise the single combined resource. Production on
+2026-10-15 fitted this exactly (Whole Venue > Building > Main Hall, Small
+Hall, Kitchen; everything else directly under the Whole Venue), so the matrix
+and `resource_type` are dropped.

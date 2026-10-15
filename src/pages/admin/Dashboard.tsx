@@ -35,7 +35,7 @@ export default function AdminDashboard() {
           <Link to="/admin/bookings" className="btn-secondary">Bookings</Link>
           <Link to="/admin/calendar" className="btn-secondary">Calendar</Link>
           <Link to="/admin/resources" className="btn-secondary">Resources</Link>
-          <Link to="/admin/pricing" className="btn-secondary">Pricing &amp; conflicts</Link>
+          <Link to="/admin/pricing" className="btn-secondary">Pricing</Link>
           <Link to="/admin/users" className="btn-secondary">Users</Link>
           <Link to="/admin/organisations" className="btn-secondary">Organisations</Link>
           <Link to="/admin/emails" className="btn-secondary">Emails</Link>

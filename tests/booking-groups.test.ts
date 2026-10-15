@@ -63,7 +63,7 @@ describe('several resources in one booking', () => {
   it('refuses resources that include each other', async () => {
     const res = await call(bookingsApi.onRequestPost, { env, cookie, body: { resource_id: 'res_whole', additional_resource_ids: ['res_main'], ...slot() } });
     expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/cannot be booked together/);
+    expect(res.body.error).toBe('Main Hall is part of Whole Venue, so they cannot be booked together. Whole Venue already includes it.');
     expect(await count()).toBe(0);
   });
 
