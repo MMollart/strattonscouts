@@ -6,7 +6,9 @@ const CONTENT_SECURITY_POLICY = [
   "script-src 'self'",
   "style-src 'self' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' data: blob:",
+  // https: lets the logo from Settings (hosted anywhere, e.g. R2) show in the
+  // header and in email previews. Images can't run code.
+  "img-src 'self' data: blob: https:",
   "connect-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
