@@ -4,6 +4,7 @@ import { requirePermission } from '../../../../_lib/auth';
 import { parseBody } from '../../../../_lib/request';
 import { abortIf, guardedBatch } from '../../../../_lib/txn';
 import { isUniqueViolation } from '../../../../_lib/assets';
+import { auditStatement } from '../../../../_lib/audit';
 import { assetAssignSchema } from '@shared/validation';
 import { ASSET_ASSIGNABLE_STATUSES } from '@shared/assets';
 
@@ -19,7 +20,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
   if (input instanceof Response) return input;
   const assetId = String(params.id);
 
-  const asset = await env.DB.prepare('SELECT status FROM assets WHERE id = ?').bind(assetId).first<{ status: string }>();
+  const asset = await env.DB.prepare('SELECT status, name FROM assets WHERE id = ?').bind(assetId).first<{ status: string; name: string }>();
   if (!asset) return error('Asset not found', 404);
   if (!(await env.DB.prepare('SELECT 1 FROM users WHERE id = ?').bind(input.user_id).first())) return error('User not found', 400);
   const refusal = (status: string) =>
@@ -38,6 +39,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
         'INSERT INTO asset_assignments (id, asset_id, user_id, assigned_by, assigned_at, assign_notes) VALUES (?, ?, ?, ?, ?, ?)',
       ).bind(id, assetId, input.user_id, admin.id, ts, input.notes),
       env.DB.prepare("UPDATE assets SET status = 'assigned', updated_at = ? WHERE id = ?").bind(ts, assetId),
+      auditStatement(env, {
+        actor: admin,
+        action: 'asset.assigned',
+        entityType: 'asset',
+        entityId: assetId,
+        entityLabel: asset.name,
+        before: { status: asset.status },
+        after: { status: 'assigned', assigned_user_id: input.user_id, assignment_id: id },
+        reason: input.notes || null,
+      }),
     ]);
   } catch (e) {
     if (isUniqueViolation(e)) done = null;

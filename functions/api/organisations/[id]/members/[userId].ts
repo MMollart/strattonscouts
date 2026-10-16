@@ -17,7 +17,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request, params })
   if ((await getMembershipRole(env, id, user.id)) !== 'manager') return error('Only an Organisation Manager can do this', 403);
   const input = await parseBody(request, membershipUpdateSchema);
   if (input instanceof Response) return input;
-  const result = await changeMembership(env, { organisationId: id, userId: String(params.userId), role: input.role });
+  const result = await changeMembership(env, { organisationId: id, userId: String(params.userId), role: input.role, actor: user });
   if (!result.ok) return result.code === 'not_member' ? error('Not a member', 404) : lastManager();
   return json({ ok: true });
 };
@@ -31,7 +31,7 @@ export const onRequestDelete: PagesFunction<Env> = async ({ env, request, params
   if (target !== user.id && (await getMembershipRole(env, id, user.id)) !== 'manager') {
     return error('Only an Organisation Manager can do this', 403);
   }
-  const result = await changeMembership(env, { organisationId: id, userId: target, role: null });
+  const result = await changeMembership(env, { organisationId: id, userId: target, role: null, actor: user });
   if (!result.ok) return result.code === 'not_member' ? error('Not a member', 404) : lastManager();
   return json({ ok: true });
 };

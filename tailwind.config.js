@@ -15,6 +15,7 @@ export default {
           red: '#e22e12',
           pink: '#ffb4e5',
           yellow: '#ffe627',
+          orange: '#ff912a',
           forest: '#205b41',
           'off-white': '#f4f4f4',
           ink: '#1b1b1b',

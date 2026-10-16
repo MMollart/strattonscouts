@@ -4,6 +4,7 @@ import { requirePermission } from '../../../_lib/auth';
 import { parseBody } from '../../../_lib/request';
 import { ASSET_SELECT, assetHistory, isUniqueViolation } from '../../../_lib/assets';
 import { assetUpdateSchema } from '@shared/validation';
+import { audited } from '../../../_lib/audit';
 
 // Admin: one asset with its full assignment history.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request, params }) => {
@@ -36,11 +37,12 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request, params })
   const status = input.status ?? current.status;
   try {
     // Guarded on the status read above, so an assignment or return made meanwhile is never overwritten.
-    const res = await env.DB.prepare(
-      'UPDATE assets SET asset_type_id = ?, name = ?, description = ?, reference = ?, status = ?, updated_at = ? WHERE id = ? AND status = ?',
-    )
-      .bind(input.asset_type_id, input.name, input.description, input.reference, status, now(), id, current.status)
-      .run();
+    const res = await audited(env, { actor: user, action: input.status && input.status !== current.status ? 'asset.status_changed' : 'asset.updated', table: 'assets', id }, () =>
+    env.DB.prepare(
+        'UPDATE assets SET asset_type_id = ?, name = ?, description = ?, reference = ?, status = ?, updated_at = ? WHERE id = ? AND status = ?',
+      )
+        .bind(input.asset_type_id, input.name, input.description, input.reference, status, now(), id, current.status)
+        .run());
     if (res.meta.changes !== 1) return error('This asset changed meanwhile; reload and try again', 409);
   } catch (e) {
     if (isUniqueViolation(e)) return error('Another asset already has this serial or reference number', 409);

@@ -2,6 +2,7 @@ import type { Env } from '../../../_lib/http';
 import { error, json, now } from '../../../_lib/http';
 import { requirePermission } from '../../../_lib/auth';
 import { adminUserUpdateSchema } from '@shared/validation';
+import { audited } from '../../../_lib/audit';
 
 // Admin: correct a customer's pricing category. Administrator roles are
 // managed separately at /api/admin/admins/:id (Super Admins only).
@@ -26,9 +27,10 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request, params })
     .bind(parsed.data.pricing_category_id)
     .first();
   if (!cat) return error('Invalid category', 400);
-  await env.DB.prepare('UPDATE users SET pricing_category_id = ?, updated_at = ? WHERE id = ?')
-    .bind(parsed.data.pricing_category_id, now(), userId)
-    .run();
+  await audited(env, { actor, action: 'user.category_changed', table: 'users', id: userId }, () =>
+    env.DB.prepare('UPDATE users SET pricing_category_id = ?, updated_at = ? WHERE id = ?')
+      .bind(parsed.data.pricing_category_id, now(), userId)
+      .run());
 
   return json({ ok: true });
 };

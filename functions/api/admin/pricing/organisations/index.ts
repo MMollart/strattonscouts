@@ -5,6 +5,7 @@ import { parseBody } from '../../../../_lib/request';
 import { exists, isoOrNull } from '../../../../_lib/crud';
 import { findOverlappingArrangement } from '../../../../_lib/organisation-pricing';
 import { organisationPricingSchema } from '@shared/validation';
+import { audited } from '../../../../_lib/audit';
 
 // Admin: organisation pricing arrangements, optionally for one organisation.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
@@ -39,16 +40,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   }
   const id = newId('orgp');
   const ts = now();
-  await env.DB.prepare(
-    `INSERT INTO organisation_pricing (id, organisation_id, resource_id, arrangement_type, pricing_model, value, effective_from, effective_to, is_active, notes, created_at, updated_at, updated_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      id, input.organisation_id, input.resource_id ?? null, input.arrangement_type,
-      input.arrangement_type === 'rate' ? input.pricing_model : null,
-      input.arrangement_type === 'free' ? 0 : input.value,
-      from, to, input.is_active ? 1 : 0, input.notes ?? null, ts, ts, user.id,
+  await audited(env, { actor: user, action: 'pricing.organisation_arrangement_created', table: 'organisation_pricing', id }, () =>
+    env.DB.prepare(
+      `INSERT INTO organisation_pricing (id, organisation_id, resource_id, arrangement_type, pricing_model, value, effective_from, effective_to, is_active, notes, created_at, updated_at, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run();
+      .bind(
+        id, input.organisation_id, input.resource_id ?? null, input.arrangement_type,
+        input.arrangement_type === 'rate' ? input.pricing_model : null,
+        input.arrangement_type === 'free' ? 0 : input.value,
+        from, to, input.is_active ? 1 : 0, input.notes ?? null, ts, ts, user.id,
+      )
+      .run());
   return json({ id }, 201);
 };

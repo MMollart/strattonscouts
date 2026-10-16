@@ -3,6 +3,7 @@ import { error, json, newId, now } from '../../_lib/http';
 import { requirePermission } from '../../_lib/auth';
 import { canonicalIso } from '../../_lib/availability-sql';
 import { closureSchema } from '@shared/validation';
+import { audited } from '../../_lib/audit';
 
 // Admin: list closures (optionally filtered by resource).
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
@@ -10,8 +11,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   if (user instanceof Response) return user;
   const resourceId = new URL(request.url).searchParams.get('resource_id');
   const rows = resourceId
-    ? await env.DB.prepare('SELECT id, resource_id, starts_at, ends_at, reason FROM resource_closures WHERE resource_id = ? ORDER BY starts_at').bind(resourceId).all()
-    : await env.DB.prepare('SELECT id, resource_id, starts_at, ends_at, reason FROM resource_closures ORDER BY starts_at').all();
+    ? await env.DB.prepare('SELECT id, resource_id, starts_at, ends_at, reason, maintenance_id, fault_id FROM resource_closures WHERE resource_id = ? ORDER BY starts_at').bind(resourceId).all()
+    : await env.DB.prepare('SELECT id, resource_id, starts_at, ends_at, reason, maintenance_id, fault_id FROM resource_closures ORDER BY starts_at').all();
   return json(rows.results);
 };
 
@@ -30,18 +31,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   if (!parsed.success) return error('Validation failed', 400, parsed.error.flatten());
 
   const id = newId('cls');
-  await env.DB.prepare(
-    'INSERT INTO resource_closures (id, resource_id, starts_at, ends_at, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-  )
-    .bind(
-      id,
-      parsed.data.resource_id,
-      canonicalIso(parsed.data.starts_at),
-      canonicalIso(parsed.data.ends_at),
-      parsed.data.reason ?? null,
-      now(),
+  await audited(env, { actor: user, action: 'availability.closure_created', table: 'resource_closures', id }, () =>
+    env.DB.prepare(
+      'INSERT INTO resource_closures (id, resource_id, starts_at, ends_at, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)',
     )
-    .run();
+      .bind(
+        id,
+        parsed.data.resource_id,
+        canonicalIso(parsed.data.starts_at),
+        canonicalIso(parsed.data.ends_at),
+        parsed.data.reason ?? null,
+        now(),
+      )
+      .run());
   return json({ id }, 201);
 };
 
@@ -56,6 +58,12 @@ export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
     return error('Invalid JSON body');
   }
   if (!body.id) return error('id is required', 400);
-  await env.DB.prepare('DELETE FROM resource_closures WHERE id = ?').bind(body.id).run();
+  // A closure owned by maintenance or a fault follows that record (FR22).
+  const owned = await env.DB.prepare('SELECT maintenance_id, fault_id FROM resource_closures WHERE id = ?').bind(body.id).first<{ maintenance_id: string | null; fault_id: string | null }>();
+  if (owned?.maintenance_id || owned?.fault_id) {
+    return error(`This closure belongs to ${owned.maintenance_id ? 'a maintenance record' : 'a fault'}. Complete or cancel that record instead.`, 409, { code: 'owned' });
+  }
+  await audited(env, { actor: user, action: 'availability.closure_deleted', table: 'resource_closures', id: body.id }, () =>
+    env.DB.prepare('DELETE FROM resource_closures WHERE id = ?').bind(body.id).run());
   return json({ ok: true });
 };

@@ -8,6 +8,9 @@ import { useAuth } from '../lib/auth';
 import { formatLondon } from '@shared/londonTime';
 import { AmendmentPanel } from '../components/AmendmentPanel';
 import { RESTRICTION_LABEL, type RestrictionKind } from '@shared/availability-rules';
+import { HistoryPanel } from '../components/HistoryPanel';
+import { AcceptedAgreements } from '../components/AcceptedAgreements';
+import { AddToCalendar } from '../components/AddToCalendar';
 
 interface BookingDetail {
   id: string;
@@ -41,7 +44,7 @@ function fmt(iso: string): string {
 export default function BookingDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { can, isAdmin } = useAuth();
   const { data, loading, error, setData } = useApi<BookingDetail>(`/bookings/${id}`, [id]);
   const [working, setWorking] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -184,6 +187,10 @@ export default function BookingDetails() {
           {working ? 'Cancelling…' : 'Cancel booking'}
         </button>
       )}
+
+      <AddToCalendar booking={data} />
+      <AcceptedAgreements bookingId={data.id} />
+      {isAdmin && <HistoryPanel filters={{ booking_id: data.id }} title="Booking history" />}
     </div>
   );
 }

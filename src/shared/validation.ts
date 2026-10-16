@@ -61,6 +61,8 @@ export const createBookingSchema = z
     provisional: z.boolean().optional(),
     // admin-only: hold period for this booking instead of the resource default
     provisional_expiry_hours: z.number().int().min(1).max(720).nullable().optional(),
+    // the agreements accepted for this booking (FR20)
+    agreements: z.lazy(() => agreementAcceptanceSchema).nullable().optional(),
   })
   .refine((v) => new Date(v.ends_at).getTime() > new Date(v.starts_at).getTime(), {
     message: 'End time must be after start time',
@@ -275,6 +277,8 @@ export const seriesCreateSchema = recurrenceRefinements(
     ...recurrenceFields,
     // Dates the customer chose to leave out, e.g. because they clash (§6.4).
     exclude_dates: z.array(ymd).max(104).default([]),
+    // the agreements accepted for every date in the series (FR20)
+    agreements: z.lazy(() => agreementAcceptanceSchema).nullable().optional(),
   }),
 );
 export type RecurrenceInput = z.infer<typeof recurrenceSchema>;
@@ -301,6 +305,8 @@ export const amendmentRequestSchema = z
     starts_at: isoDateTime,
     ends_at: isoDateTime,
     note: z.string().trim().max(1000).nullable().optional(),
+    // needed only when the new resource has agreements not yet accepted (FR20)
+    agreements: z.lazy(() => agreementAcceptanceSchema).nullable().optional(),
   })
   .refine((v) => new Date(v.ends_at).getTime() > new Date(v.starts_at).getTime(), {
     message: 'End time must be after start time',
@@ -357,3 +363,102 @@ export const assetReturnSchema = z.object({
   outcome: z.enum(['available', 'damaged', 'lost']).default('available'),
   notes: optionalText(1000),
 });
+
+// ------------------------- Release 3 / FR22: maintenance -------------------
+
+export const MAINTENANCE_STATUSES = ['planned', 'in_progress', 'completed', 'cancelled'] as const;
+export const FAULT_SEVERITIES = ['low', 'medium', 'high', 'critical'] as const;
+export const FAULT_STATUSES = ['open', 'in_progress', 'resolved', 'closed'] as const;
+
+export const maintenanceSchema = z
+  .object({
+    resource_id: z.string().min(1),
+    maintenance_type_id: z.string().min(1),
+    title: z.string().trim().min(2).max(160),
+    description: z.string().max(4000).default(''),
+    starts_at: isoDateTime,
+    ends_at: isoDateTime,
+    status: z.enum(MAINTENANCE_STATUSES).default('planned'),
+    blocks_availability: z.boolean().default(true),
+    assigned_admin_id: z.string().min(1).nullable().optional(),
+    notes: z.string().max(4000).default(''),
+    /** Save over existing bookings anyway (§4.6); requires a reason. */
+    acknowledge_conflicts: z.boolean().optional(),
+    exception_reason: z.string().trim().max(500).optional(),
+  })
+  .refine((v) => new Date(v.ends_at).getTime() > new Date(v.starts_at).getTime(), { message: 'End must be after start', path: ['ends_at'] });
+export type MaintenanceInput = z.infer<typeof maintenanceSchema>;
+
+export const maintenanceTypeSchema = z.object({
+  label: z.string().trim().min(2).max(80),
+  sort_order: z.number().int().min(0).max(1000).default(0),
+  is_active: z.boolean().default(true),
+});
+
+export const maintenanceNotifySchema = z.object({
+  booking_ids: z.array(z.string().min(1)).max(500).optional(),
+  message: z.string().trim().max(2000).default(''),
+});
+
+export const affectedBookingSchema = z.object({
+  status: z.enum(['needs_action', 'resolved']),
+  resolution_note: z.string().trim().max(1000).optional(),
+});
+
+export const faultSchema = z.object({
+  resource_id: z.string().min(1),
+  description: z.string().trim().min(3).max(4000),
+  severity: z.enum(FAULT_SEVERITIES),
+  status: z.enum(FAULT_STATUSES).default('open'),
+  blocks_bookings: z.boolean().default(false),
+  resolution_notes: z.string().max(4000).default(''),
+});
+export type FaultInput = z.infer<typeof faultSchema>;
+
+// ---------------------------------------------------------------------------
+// Release 3 / FR20: booking agreements
+// ---------------------------------------------------------------------------
+
+export const agreementTemplateSchema = z.object({
+  title: z.string().trim().min(2).max(160),
+  summary: z.string().trim().max(300).default(''),
+  applies_to_all: z.boolean().default(false),
+  is_active: z.boolean().default(true),
+  resource_ids: z.array(z.string().min(1)).max(200).default([]),
+});
+export type AgreementTemplateInput = z.infer<typeof agreementTemplateSchema>;
+
+export const agreementVersionSchema = z.object({
+  body: z.string().trim().min(10).max(50_000),
+  effective_from: isoDateTime,
+  change_note: z.string().trim().max(500).default(''),
+});
+
+/** A drawn signature: a PNG data URL, at most ~200 KB. */
+const signatureImage = z
+  .string()
+  .max(280_000)
+  .regex(/^data:image\/png;base64,[A-Za-z0-9+/=]+$/, 'The drawn signature must be a PNG image');
+
+/** Acceptance sent with a booking or change request (FR20 §5.4). */
+export const agreementAcceptanceSchema = z.object({
+  /** The versions shown to and accepted by the customer; each box ticked explicitly. */
+  version_ids: z.array(z.string().min(1)).max(50),
+  accepted: z.literal(true),
+  signed_name: z.string().trim().min(2, 'Type your full name to sign').max(160),
+  signature_image: signatureImage.nullable().optional(),
+});
+export type AgreementAcceptanceInput = z.infer<typeof agreementAcceptanceSchema>;
+
+// Release 3 / FR17: calendar subscription feeds.
+export const calendarFeedCreateSchema = z
+  .object({
+    kind: z.enum(['user', 'organisation', 'admin']),
+    name: z.string().trim().max(80).optional(),
+    organisation_id: z.string().min(1).optional(),
+    // admin feeds: null or missing means every resource
+    resource_ids: z.array(z.string().min(1)).min(1).max(50).nullable().optional(),
+    show_names: z.boolean().optional(),
+  })
+  .refine((v) => v.kind !== 'organisation' || !!v.organisation_id, { message: 'Choose an organisation', path: ['organisation_id'] });
+export type CalendarFeedCreateInput = z.infer<typeof calendarFeedCreateSchema>;

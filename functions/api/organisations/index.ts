@@ -4,6 +4,7 @@ import { getAuthUser } from '../../_lib/auth';
 import { encryptAtRest } from '../../_lib/crypto';
 import { parseBody } from '../../_lib/request';
 import { organisationSchema } from '@shared/validation';
+import { auditStatement } from '../../_lib/audit';
 
 // The signed-in user's organisations and their role in each.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
@@ -49,6 +50,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     env.DB.prepare(
       `INSERT INTO organisation_memberships (organisation_id, user_id, role, created_at, updated_at) VALUES (?, ?, 'manager', ?, ?)`,
     ).bind(id, user.id, ts, ts),
+    auditStatement(env, {
+      actor: user,
+      action: 'organisation.created',
+      entityType: 'organisation',
+      entityId: id,
+      entityLabel: input.name,
+      after: { name: input.name, organisation_type_id: input.organisation_type_id, pricing_category_id: input.pricing_category_id, manager_user_id: user.id },
+      organisationId: id,
+    }),
   ]);
   return json({ id }, 201);
 };

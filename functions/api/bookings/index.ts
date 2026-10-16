@@ -4,6 +4,7 @@ import { can, getAuthUser } from '../../_lib/auth';
 import { createBookingSchema } from '@shared/validation';
 import { createBookingAtomic } from '../../_lib/booking';
 import { createBookingGroup } from '../../_lib/booking-group';
+import { checkAcceptance, requiredAgreements, signatureDraft } from '../../_lib/agreements';
 import { bookingTimeParams, sendEmail } from '../../_lib/email';
 import { getMembershipRole } from '../../_lib/organisations';
 import { formatGBP } from '@shared/pricing';
@@ -72,6 +73,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   }
 
   const extra = (parsed.data.additional_resource_ids ?? []).filter((id) => id !== parsed.data.resource_id);
+
+  // Agreements for every resource booked must be accepted explicitly (FR20).
+  const required = await requiredAgreements(env, [parsed.data.resource_id, ...extra]);
+  const accepted = checkAcceptance(required, parsed.data.agreements);
+  if (!accepted.ok) return accepted.response;
+  const acceptance = accepted.accepted.length
+    ? { signature: signatureDraft(parsed.data.agreements!, user.id, customerId), agreements: accepted.accepted }
+    : null;
+
   if (extra.length) {
     return createGroup(env, {
       userId: customerId,
@@ -83,6 +93,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
       override: parsed.data.override ?? null,
       provisional: parsed.data.provisional ?? false,
       provisionalExpiryHours: parsed.data.provisional ? (parsed.data.provisional_expiry_hours ?? null) : null,
+      acceptance,
     });
   }
 
@@ -97,6 +108,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     override: parsed.data.override ?? null,
     provisional: parsed.data.provisional ?? false,
     provisionalExpiryHours: parsed.data.provisional ? (parsed.data.provisional_expiry_hours ?? null) : null,
+    acceptance,
   });
 
   if (!result.ok) {

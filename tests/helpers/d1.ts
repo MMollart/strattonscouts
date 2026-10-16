@@ -7,15 +7,34 @@ const MIGRATIONS = Object.keys(MIGRATION_FILES)
   .sort()
   .map((k) => MIGRATION_FILES[k]);
 
-/** Split a migration file into statements (no triggers or semicolons in strings). */
+/**
+ * Split a migration file into statements (no semicolons in strings). A
+ * CREATE TRIGGER body (BEGIN ... END) stays one statement.
+ */
 function statements(sql: string): string[] {
-  return sql
+  const parts = sql
     .split('\n')
     .filter((line) => !line.trim().startsWith('--'))
     .join('\n')
     .split(';')
     .map((s) => s.trim())
     .filter(Boolean);
+  const out: string[] = [];
+  let trigger: string[] | null = null;
+  for (const part of parts) {
+    if (trigger) {
+      trigger.push(part);
+      if (/^END$/i.test(part)) {
+        out.push(trigger.join(';\n'));
+        trigger = null;
+      }
+    } else if (/^CREATE\s+TRIGGER\b/i.test(part)) {
+      trigger = [part];
+    } else {
+      out.push(part);
+    }
+  }
+  return out;
 }
 
 /**
@@ -30,6 +49,7 @@ export async function createTestEnv(
     modules: true,
     script: 'export default { fetch() { return new Response(null) } }',
     d1Databases: { DB: crypto.randomUUID() },
+    r2Buckets: ['BUCKET'],
   });
   const db = (await mf.getD1Database('DB')) as unknown as D1Database;
   // stopBefore holds back that migration and later ones, so a test can shape
@@ -43,7 +63,8 @@ export async function createTestEnv(
   };
   await apply(now);
   if (!opts.migratedPrices && cut === -1) await applyTestPrices(db);
-  const env = { DB: db, ENVIRONMENT: 'test', APP_BASE_URL: 'http://localhost' } as unknown as Env;
+  const bucket = (await mf.getR2Bucket('BUCKET')) as unknown as R2Bucket;
+  const env = { DB: db, BUCKET: bucket, ENVIRONMENT: 'test', APP_BASE_URL: 'http://localhost' } as unknown as Env;
   return { env, db, dispose: () => mf.dispose(), applyRemaining: () => apply(later) };
 }
 

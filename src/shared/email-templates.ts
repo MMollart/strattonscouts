@@ -20,7 +20,8 @@ export type EmailTemplateKey =
   | 'provisional_expired'
   | 'payment_reminder'
   | 'organisation_invitation'
-  | 'password_reset';
+  | 'password_reset'
+  | 'maintenance_notice';
 
 /** The editable parts of an email. Sections are plain text with {{ placeholders }}. */
 export interface EmailContent {
@@ -99,6 +100,9 @@ export const PARAM_DESCRIPTION: Record<string, string> = {
   invitation_url: 'Link to accept or decline',
   invitation_expiry: 'When the invitation expires',
   reset_url: 'Password reset link',
+  maintenance_title: 'What the maintenance is',
+  maintenance_period: 'When the maintenance takes place (UK time)',
+  maintenance_message: "The administrator's message about the maintenance",
 };
 
 const THANKS = 'Thank you,\n{{ venue_name }}';
@@ -234,6 +238,24 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     extra_params: ['payment_instructions'],
   },
   {
+    key: 'maintenance_notice',
+    name: 'Maintenance notice',
+    trigger: 'An administrator notifies customers whose bookings maintenance affects',
+    subject: 'Maintenance affecting your booking {{ booking_reference }}',
+    badge: { label: 'Maintenance', colour: 'orange' },
+    title: 'Some work is planned around your booking.',
+    body: paras(
+      HI,
+      'We have maintenance planned at the venue that affects your booking: {{ maintenance_title }}, {{ maintenance_period }}.',
+      '{{ maintenance_message }}',
+      'Your booking has not been cancelled. We will be in touch if anything needs to change, or you can contact us to discuss it.',
+    ),
+    detail_card: lines('Booking: {{ resource_name }}', WHEN, 'Maintenance: {{ maintenance_title }}', REF),
+    thanks: THANKS,
+    footer: FOOTER,
+    extra_params: ['maintenance_title', 'maintenance_period', 'maintenance_message'],
+  },
+  {
     key: 'organisation_invitation',
     name: 'Organisation invitation',
     trigger: 'An Organisation Manager invites someone',
@@ -274,7 +296,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
 
 const BOOKING_TEMPLATES = new Set<EmailTemplateKey>([
   'booking_request_received', 'booking_approved', 'booking_rejected', 'booking_confirmation', 'booking_amended',
-  'booking_amendment_rejected', 'booking_cancelled', 'provisional_booking', 'provisional_expired', 'payment_reminder',
+  'booking_amendment_rejected', 'booking_cancelled', 'provisional_booking', 'provisional_expired', 'payment_reminder', 'maintenance_notice',
 ]);
 
 export function templateDefinition(key: string): TemplateDefinition | undefined {
@@ -418,4 +440,7 @@ export const SAMPLE_PARAMS: Record<string, string> = {
   invitation_url: 'https://example.com/invitations/sample',
   invitation_expiry: '13 Jan 2026',
   reset_url: 'https://example.com/reset-password?token=sample',
+  maintenance_title: 'Main Hall floor resurfacing',
+  maintenance_period: '6 Jan 2026, 08:00 to 6 Jan 2026, 18:00',
+  maintenance_message: 'The hall will be closed while the floor is sanded and sealed.',
 };

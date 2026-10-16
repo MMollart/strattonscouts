@@ -5,6 +5,7 @@ import { ErrorState } from './ui';
 import { formatGBP } from '@shared/pricing';
 import { addDays, formatLondon } from '@shared/londonTime';
 import { describePattern, FREQUENCY_LABEL, MAX_OCCURRENCES, type Frequency, type MonthlyMode } from '@shared/recurrence';
+import { AgreementAcceptance, type AcceptanceValue, type RequiredAgreement } from './AgreementAcceptance';
 import type { BookingWindow } from './BookingWindowFields';
 
 interface OccurrencePreview {
@@ -37,7 +38,12 @@ export function RecurringBooking({
   onBehalfOfUserId,
   window: win,
   onCreated,
+  agreements,
+  signLabel,
 }: {
+  /** Agreements for this resource (FR20); accepted once for every date. */
+  agreements?: RequiredAgreement[] | null;
+  signLabel?: string;
   resourceId: string;
   resourceName: string;
   organisationId?: string | null;
@@ -81,6 +87,9 @@ export function RecurringBooking({
     setError(null);
   }, [key]);
 
+  const [acceptance, setAcceptance] = useState<AcceptanceValue | null>(null);
+  const agreed = agreements !== null && (!agreements?.length || !!acceptance);
+
   async function review() {
     setWorking(true);
     setError(null);
@@ -99,7 +108,7 @@ export function RecurringBooking({
     setError(null);
     try {
       const exclude_dates = excludeUnavailable ? preview.occurrences.filter((o) => !o.available).map((o) => o.date) : [];
-      const created = await api.post<{ id: string }>('/series', { ...body, exclude_dates });
+      const created = await api.post<{ id: string }>('/series', { ...body, exclude_dates, agreements: agreements?.length ? acceptance : null });
       if (onCreated) onCreated(created.id);
       else navigate(`/series/${created.id}`);
     } catch (e) {
@@ -192,8 +201,9 @@ export function RecurringBooking({
             <span className="font-black text-scout-purple">{formatGBP(preview.total_pence)}</span>
           </p>
           {preview.requires_approval && <p className="text-sm text-yellow-800">Every date needs administrator approval.</p>}
+          {agreements && agreements.length > 0 && <AgreementAcceptance agreements={agreements} onChange={setAcceptance} idPrefix="rec-agr" signLabel={signLabel} />}
           <div className="flex gap-2">
-            <button type="button" className="btn-primary" onClick={submit} disabled={working || blocked || preview.available_count === 0}>
+            <button type="button" className="btn-primary" onClick={submit} disabled={working || blocked || preview.available_count === 0 || !agreed}>
               {working ? 'Submitting…' : preview.requires_approval ? 'Request recurring booking' : 'Confirm recurring booking'}
             </button>
             <button type="button" className="btn-secondary" onClick={() => setPreview(null)}>Change</button>

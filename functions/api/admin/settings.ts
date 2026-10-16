@@ -1,6 +1,7 @@
 import type { Env } from '../../_lib/http';
 import { error, json, now } from '../../_lib/http';
 import { requirePermission } from '../../_lib/auth';
+import { auditStatement } from '../../_lib/audit';
 import { SETTING_DEFINITIONS, settingsUpdateSchema } from '@shared/settings';
 
 // Super Admin: read application settings (with defaults for unset keys).
@@ -28,14 +29,26 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
   if (!parsed.success) return error('Validation failed', 400, parsed.error.flatten());
   const ts = now();
   const entries = Object.entries(parsed.data.values);
-  if (entries.length) {
+  const current = await env.DB.prepare('SELECT key, value FROM app_settings').all<{ key: string; value: string }>();
+  const before = Object.fromEntries(current.results.map((r) => [r.key, r.value]));
+  const changed = entries.filter(([key, value]) => before[key] !== String(value));
+  if (changed.length) {
     await env.DB.batch(
-      entries.map(([key, value]) =>
+      changed.flatMap(([key, value]) => [
         env.DB.prepare(
           `INSERT INTO app_settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?)
            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
         ).bind(key, String(value), ts, user.id),
-      ),
+        auditStatement(env, {
+          actor: user,
+          action: 'settings.updated',
+          entityType: 'setting',
+          entityId: key,
+          entityLabel: key,
+          before: { value: before[key] ?? null },
+          after: { value: String(value) },
+        }),
+      ]),
     );
   }
   return json({ ok: true });

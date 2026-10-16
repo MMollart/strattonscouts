@@ -18,6 +18,10 @@ export interface SettingDefinition {
 
 export const SETTING_DEFINITIONS: SettingDefinition[] = [
   { key: 'venue_name', label: 'Venue name', type: 'text', default: 'Stratton Scouts', help: 'Used in emails as {{ venue_name }}.' },
+  {
+    key: 'venue_address', label: 'Venue address', type: 'text', default: '', optional: true,
+    help: 'Shown as the location in calendar entries. Leave blank to show just the venue name.',
+  },
   { key: 'invitation_expiry_days', label: 'Organisation invitation expiry (days)', type: 'integer', default: '7', min: 1, max: 90 },
   {
     key: 'provisional_expiry_hours', label: 'Provisional booking hold (hours)', type: 'integer', default: '48', min: 1, max: 720,
@@ -49,6 +53,7 @@ function valueSchema(d: SettingDefinition): z.ZodType<string, z.ZodTypeDef, unkn
   }
   if (d.type === 'email') return z.string().trim().email().max(200);
   if (d.type === 'url') return z.string().trim().max(500).refine((v) => v === '' || /^https:\/\/\S+$/.test(v), 'Must start with https://');
+  if (d.optional) return z.string().trim().max(300);
   return z.string().trim().min(1).max(200);
 }
 

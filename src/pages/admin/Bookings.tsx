@@ -9,6 +9,7 @@ import { PriceSummary } from '../../components/PriceSummary';
 import { Spinner, EmptyState, ErrorState, StatusBadge } from '../../components/ui';
 import { formatGBP } from '@shared/pricing';
 import { formatLondon, londonToday } from '@shared/londonTime';
+import { AgreementAcceptance, useRequiredAgreements, type AcceptanceValue, type RequiredAgreement } from '../../components/AgreementAcceptance';
 import {
   AvailabilityNotice,
   BookingWindowFields,
@@ -234,6 +235,9 @@ export function BookForCustomer({
   const { can } = useAuth();
   const iso = windowToIso(win);
   const availability = useAvailability(resourceId || undefined, iso);
+  const { agreements, setAgreements } = useRequiredAgreements(resourceId ? [resourceId] : []);
+  const [acceptance, setAcceptance] = useState<AcceptanceValue | null>(null);
+  const agreed = !!agreements && (agreements.length === 0 || !!acceptance);
   // Rule restrictions (FR03) can be overridden with a reason; closures and clashes cannot.
   const canOverride = can('availability.manage') && availability.status === 'restricted';
   const { quote, loading: quoting, error: quoteError } = useQuote({ resourceId: resourceId || undefined, window: customerId ? iso : null, onBehalfOfUserId: customerId || undefined });
@@ -261,9 +265,11 @@ export function BookForCustomer({
         override: canOverride && overrideReason.trim()
           ? { kinds: availability.violations.map((v) => v.kind), reason: overrideReason.trim() }
           : undefined,
+        agreements: agreements?.length ? acceptance : null,
       });
       onCreated();
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'agreements_required') setAgreements((err.details as { required: RequiredAgreement[] }).required);
       setError(err instanceof ApiError ? err.message : 'Could not create booking');
     } finally {
       setSaving(false);
@@ -323,9 +329,15 @@ export function BookForCustomer({
       <p className="text-xs text-gray-500">
         The booking is priced at the customer&apos;s category rate and follows the resource&apos;s approval setting. The customer is emailed.
       </p>
+      {agreements && agreements.length > 0 && (
+        <>
+          <p className="text-sm text-gray-600">You are accepting these on the customer&apos;s behalf; this is recorded against your account. Only do so with the customer&apos;s agreement.</p>
+          <AgreementAcceptance agreements={agreements} onChange={setAcceptance} idPrefix="bfc-agr" signLabel="Name of the person accepting" />
+        </>
+      )}
       {error && <ErrorState message={error} />}
       <div className="flex gap-2">
-        <button className="btn-primary" disabled={saving || !customerId || !iso}>{saving ? 'Booking…' : 'Create booking'}</button>
+        <button className="btn-primary" disabled={saving || !customerId || !iso || !agreed}>{saving ? 'Booking…' : 'Create booking'}</button>
         <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
       </div>
     </form>

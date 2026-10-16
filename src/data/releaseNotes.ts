@@ -10,6 +10,26 @@ export interface ReleaseNote {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    title: 'Release 3: audit history, maintenance, agreements, booking values and calendars',
+    date: '2026-10-16',
+    summary: 'Administrators can see who changed what, plan maintenance without double-booking the hall, ask customers to accept the hire conditions, see booking values, and put bookings in their calendars.',
+    changes: [
+      'A full history of every booking and every change administrators make, with who made it, when, what changed and why.',
+      'History is shown on each booking, organisation and resource, and can be searched and exported.',
+      'Administrators can schedule maintenance on any resource. The resource can’t be booked while the work is on, and nor can anything it is part of.',
+      'Existing bookings are never cancelled by maintenance. They are listed so an administrator can contact the group, and customers can be emailed a maintenance notice.',
+      'Faults can be reported with a severity. Serious ones stop the resource being booked until they are fixed.',
+      'Maintenance appears on the administrators’ calendar in orange stripes.',
+      'When you book, you are shown any agreements for what you are booking, such as our hire conditions, and asked to tick to accept each one and type your name. You can also draw a signature.',
+      'You can see the agreements you accepted, word for word, on each booking.',
+      'If you change a booking to somewhere with different terms, you are asked to accept just the new ones.',
+      'A new Booking values page shows administrators the value of confirmed, provisional, awaiting-approval and cancelled bookings for any period, by resource, price group and organisation, with a chart and a CSV download. These are booking values, not payments received.',
+      'Add any booking to your calendar: download it for Apple Calendar or Outlook, or open it straight in Google Calendar or Outlook.',
+      'Subscribe to your bookings from My account, so they appear in your calendar app and keep up to date when bookings change or are cancelled. Organisation managers can subscribe to all of their organisation’s bookings.',
+      'Administrators can subscribe to a venue calendar for all resources or just the ones they choose, and can revoke any calendar link.',
+    ],
+  },
+  {
     title: 'Logo and branded emails',
     date: '2026-10-16',
     summary: 'The site and every email now look like Stratton Scouts.',

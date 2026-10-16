@@ -7,6 +7,8 @@ import { Spinner, EmptyState, ErrorState, StatusBadge } from '../components/ui';
 import { OrganisationForm } from '../components/OrganisationForm';
 import { formatGBP } from '@shared/pricing';
 import { formatLondon } from '@shared/londonTime';
+import { HistoryPanel } from '../components/HistoryPanel';
+import { CalendarSubscriptions } from '../components/CalendarFeeds';
 
 interface Member { user_id: string; full_name: string; email: string; role: 'manager' | 'member'; }
 interface Invitation { id: string; email: string; role: string; status: string; expires_at: string; }
@@ -30,7 +32,7 @@ interface OrgBooking {
 
 export default function OrganisationDetail() {
   const { id } = useParams();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const { data, loading, error, setData } = useApi<OrganisationDetailData>(`/organisations/${id}`, [id]);
   const { data: bookings } = useApi<OrgBooking[]>(`/organisations/${id}/bookings`, [id]);
   const [editing, setEditing] = useState(false);
@@ -182,6 +184,8 @@ export default function OrganisationDetail() {
         </section>
       )}
 
+      {isManager && <CalendarSubscriptions organisation={{ id: data.id, name: data.name }} />}
+
       <section className="mt-8">
         <h2 className="text-xl">Organisation bookings</h2>
         <div className="mt-3 space-y-2">
@@ -202,6 +206,8 @@ export default function OrganisationDetail() {
           ))}
         </div>
       </section>
+
+      {can('bookings.view') && <HistoryPanel filters={{ organisation_id: data.id }} title="Organisation history" />}
     </div>
   );
 }

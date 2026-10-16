@@ -1,7 +1,8 @@
 import type { Env } from './http';
 import { newId } from './http';
 import { abortIf, guardedBatch } from './txn';
-import { bookingInsertStatements, prepareBooking, type BookingDraft, type CreateBookingFailure, type CreateBookingParams } from './booking';
+import { agreementsFor, bookingInsertStatements, prepareBooking, type BookingDraft, type CreateBookingFailure, type CreateBookingParams } from './booking';
+import { acceptanceStatements } from './agreements';
 import { ANCESTORS_SQL, CONFLICTING_BOOKING_SQL } from './availability-sql';
 
 export interface GroupBooking {
@@ -64,6 +65,9 @@ export async function createBookingGroup(params: Omit<CreateBookingParams, 'reso
     ...bookingInsertStatements(env, d),
     abortIf(env, 'NOT EXISTS (SELECT 1 FROM bookings WHERE id = ?)', d.id),
   ]);
+  if (params.acceptance) {
+    statements.push(...acceptanceStatements(env, params.acceptance.signature, drafts.map((d) => ({ bookingId: d.id, agreements: agreementsFor(params.acceptance, d.resourceId) }))));
+  }
   const result = await guardedBatch(env, statements);
   if (!result) return { ok: false, code: 'conflict', message: 'One of the resources is no longer available for this period, so nothing was booked.' };
 

@@ -28,7 +28,23 @@ interface Booking {
 }
 
 interface Resource { id: string; name: string; is_active: boolean }
-interface Closure { id: string; resource_id: string; starts_at: string; ends_at: string; reason: string | null }
+interface Closure { id: string; resource_id: string; starts_at: string; ends_at: string; reason: string | null; maintenance_id?: string | null }
+interface Maintenance {
+  id: string;
+  reference: string;
+  resource_id: string;
+  resource_name: string;
+  maintenance_type_label: string;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+  status: string;
+  blocks_availability: boolean;
+}
+interface MaintenanceType { id: string; label: string }
+
+/** Maintenance is drawn in orange stripes so it never looks like a booking or a plain closure (FR22 §4.8). */
+const MAINTENANCE_STYLE = 'border-2 border-scout-orange bg-[repeating-linear-gradient(135deg,#ffe3c7_0,#ffe3c7_6px,#fff4e8_6px,#fff4e8_12px)] text-orange-900';
 interface Organisation { id: string; name: string }
 
 const PALETTE = ['#7413dc', '#00a794', '#006ddf', '#e22e12', '#205b41', '#003982', '#c2185b', '#8a6d00'];
@@ -55,6 +71,7 @@ export default function AdminCalendar() {
   const { can } = useAuth();
   const { data: resources } = useApi<Resource[]>('/admin/resources');
   const { data: organisations } = useApi<Organisation[]>('/admin/organisations');
+  const { data: maintenanceTypes } = useApi<MaintenanceType[]>('/admin/maintenance-types');
   const [view, setView] = useState<CalendarView>(() => (typeof window !== 'undefined' && window.innerWidth < 640 ? 'day' : 'week'));
   const [date, setDate] = useState(londonToday());
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -64,6 +81,9 @@ export default function AdminCalendar() {
   const [showInactive, setShowInactive] = useState(false);
   const [bookings, setBookings] = useState<Booking[] | null>(null);
   const [closures, setClosures] = useState<Closure[]>([]);
+  const [maintenance, setMaintenance] = useState<Maintenance[]>([]);
+  const [maintenanceStatus, setMaintenanceStatus] = useState('planned,in_progress');
+  const [maintenanceType, setMaintenanceType] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Booking | null>(null);
   const [creating, setCreating] = useState<{ resourceId: string; day: string; hour: number } | null>(null);
@@ -81,9 +101,18 @@ export default function AdminCalendar() {
     if (hidden.size && resources) params.set('resource_ids', shown.map((r) => r.id).join(',') || 'none');
     try {
       setError(null);
-      const [b, c] = await Promise.all([api.get<Booking[]>(`/admin/bookings?${params}`), api.get<Closure[]>('/admin/closures')]);
+      const mParams = new URLSearchParams({ from: range.from, to: range.to });
+      if (maintenanceStatus !== 'hide' && maintenanceStatus) mParams.set('status', maintenanceStatus);
+      if (maintenanceType) mParams.set('type_id', maintenanceType);
+      const [b, c, m] = await Promise.all([
+        api.get<Booking[]>(`/admin/bookings?${params}`),
+        api.get<Closure[]>('/admin/closures'),
+        maintenanceStatus === 'hide' ? Promise.resolve([]) : api.get<Maintenance[]>(`/admin/maintenance?${mParams}`),
+      ]);
       setBookings(b);
-      setClosures(c.filter((x) => x.starts_at < range.to && x.ends_at > range.from));
+      // Closures owned by maintenance are drawn as maintenance instead.
+      setClosures(c.filter((x) => !x.maintenance_id && x.starts_at < range.to && x.ends_at > range.from));
+      setMaintenance(m);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not load the calendar');
     }
@@ -92,7 +121,7 @@ export default function AdminCalendar() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range.from, range.to, status, organisationId, showInactive, hidden, resources]);
+  }, [range.from, range.to, status, organisationId, showInactive, hidden, resources, maintenanceStatus, maintenanceType]);
 
   const toggle = (id: string) => {
     const next = new Set(hidden);
@@ -152,6 +181,21 @@ export default function AdminCalendar() {
             <label className="label" htmlFor="cal-q">Customer</label>
             <input id="cal-q" className="input" placeholder="Name, email or reference" value={q} onChange={(e) => setQ(e.target.value)} onBlur={() => void load()} />
           </form>
+          <div>
+            <label className="label" htmlFor="cal-mstatus">Maintenance</label>
+            <select id="cal-mstatus" className="input" value={maintenanceStatus} onChange={(e) => setMaintenanceStatus(e.target.value)}>
+              <option value="planned,in_progress">Planned or in progress</option>
+              <option value="">All, including completed and cancelled</option>
+              <option value="hide">Hide maintenance</option>
+            </select>
+          </div>
+          <div>
+            <label className="label" htmlFor="cal-mtype">Maintenance type</label>
+            <select id="cal-mtype" className="input" value={maintenanceType} disabled={maintenanceStatus === 'hide'} onChange={(e) => setMaintenanceType(e.target.value)}>
+              <option value="">All</option>
+              {maintenanceTypes?.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </div>
           <label className="flex items-center gap-2 self-end pb-2">
             <input type="checkbox" checked={showInactive} disabled={!!status} onChange={(e) => setShowInactive(e.target.checked)} />
             Include cancelled and expired
@@ -170,7 +214,7 @@ export default function AdminCalendar() {
           </div>
         </fieldset>
         <p className="mt-3 text-xs text-gray-500">
-          Solid border: confirmed. Dashed: awaiting approval. Dotted: provisional. Faded and struck through: cancelled or expired. ↻ marks a recurring booking. Grey hatching: closed.
+          Solid border: confirmed. Dashed: awaiting approval. Dotted: provisional. Faded and struck through: cancelled or expired. ↻ marks a recurring booking. Grey hatching: closed. Orange stripes: maintenance.
         </p>
       </details>
 
@@ -183,6 +227,7 @@ export default function AdminCalendar() {
           resources={shown}
           bookings={visible}
           closures={closures}
+          maintenance={maintenance}
           colour={colour}
           onSelect={setSelected}
           onSlot={can('bookings.create') ? (resourceId, hour) => setCreating({ resourceId, day: date, hour }) : undefined}
@@ -195,6 +240,7 @@ export default function AdminCalendar() {
           month={date.slice(0, 7)}
           bookings={visible}
           closures={closures.filter((c) => !hidden.has(c.resource_id))}
+          maintenance={maintenance.filter((m) => !hidden.has(m.resource_id))}
           colour={colour}
           resourceName={(id) => resources?.find((r) => r.id === id)?.name ?? ''}
           onSelect={setSelected}
@@ -244,12 +290,13 @@ function Chip({ b, colour, onSelect, showResource }: { b: Booking; colour: strin
 }
 
 function DayGrid({
-  day, resources, bookings, closures, colour, onSelect, onSlot,
+  day, resources, bookings, closures, maintenance, colour, onSelect, onSlot,
 }: {
   day: string;
   resources: Resource[];
   bookings: Booking[];
   closures: Closure[];
+  maintenance: Maintenance[];
   colour: Map<string, string>;
   onSelect: (b: Booking) => void;
   onSlot?: (resourceId: string, hour: number) => void;
@@ -285,6 +332,21 @@ function DayGrid({
                   style={{ top: `${p.top * 100}%`, height: `${p.height * 100}%` }} title={`Closed${c.reason ? `: ${c.reason}` : ''}`} />
               );
             })}
+            {maintenance.filter((m) => m.resource_id === r.id && onDay(m, day)).map((m) => {
+              const p = dayPosition(m, day, START_HOUR, END_HOUR);
+              return (
+                <Link
+                  key={m.id}
+                  to={`/admin/maintenance?open=${m.id}`}
+                  className={`absolute inset-x-0 overflow-hidden rounded-md p-1 text-xs ${MAINTENANCE_STYLE} ${m.status === 'cancelled' || m.status === 'completed' ? 'opacity-50' : ''}`}
+                  style={{ top: `${p.top * 100}%`, height: `${p.height * 100}%` }}
+                  title={`Maintenance: ${m.title} (${m.maintenance_type_label})`}
+                >
+                  <span className="font-bold">Maintenance</span>
+                  <span className="block truncate">{m.title}</span>
+                </Link>
+              );
+            })}
             {bookings.filter((b) => b.resource_id === r.id && onDay(b, day)).map((b) => {
               const p = dayPosition(b, day, START_HOUR, END_HOUR);
               return (
@@ -310,13 +372,14 @@ function DayGrid({
 }
 
 function DaysGrid({
-  view, days, month, bookings, closures, colour, resourceName, onSelect, onDay: openDay,
+  view, days, month, bookings, closures, maintenance, colour, resourceName, onSelect, onDay: openDay,
 }: {
   view: CalendarView;
   days: string[];
   month: string;
   bookings: Booking[];
   closures: Closure[];
+  maintenance: Maintenance[];
   colour: Map<string, string>;
   resourceName: (id: string) => string;
   onSelect: (b: Booking) => void;
@@ -332,6 +395,7 @@ function DaysGrid({
       {days.map((d) => {
         const items = bookings.filter((b) => onDay(b, d)).sort((a, b) => a.starts_at.localeCompare(b.starts_at));
         const closed = closures.filter((c) => onDay(c, d));
+        const works = maintenance.filter((m) => onDay(m, d));
         const outside = view === 'month' && d.slice(0, 7) !== month;
         if (outside && items.length === 0) return <div key={d} className="hidden bg-gray-50 sm:block" />;
         return (
@@ -345,6 +409,16 @@ function DaysGrid({
                 Closed: {[...new Set(closed.map((c) => resourceName(c.resource_id)))].join(', ')}
               </p>
             )}
+            {works.map((m) => (
+              <Link
+                key={m.id}
+                to={`/admin/maintenance?open=${m.id}`}
+                className={`block truncate rounded-md px-1.5 py-0.5 text-xs ${MAINTENANCE_STYLE} ${m.status === 'cancelled' || m.status === 'completed' ? 'opacity-50' : ''}`}
+                title={`Maintenance: ${m.title}, ${m.resource_name}`}
+              >
+                <span className="font-bold">Maintenance</span> {m.resource_name} · {m.title}
+              </Link>
+            ))}
             {items.slice(0, limit).map((b) => (
               <Chip key={b.id} b={b} colour={colour.get(b.resource_id) ?? '#999'} onSelect={onSelect} showResource={b.resource_name} />
             ))}

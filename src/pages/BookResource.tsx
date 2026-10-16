@@ -17,6 +17,7 @@ import { useQuote } from '../lib/useQuote';
 import { PriceSummary } from '../components/PriceSummary';
 import { RecurringBooking } from '../components/RecurringBooking';
 import { ExtraResources, type ExtraStatus } from '../components/ExtraResources';
+import { AgreementAcceptance, useRequiredAgreements, type AcceptanceValue, type RequiredAgreement } from '../components/AgreementAcceptance';
 import { formatGBP } from '@shared/pricing';
 
 interface ResourceDetail {
@@ -61,6 +62,9 @@ export default function BookResource() {
   const [repeat, setRepeat] = useState(false);
   const [extras, setExtras] = useState<string[]>([]);
   const [extraStatus, setExtraStatus] = useState<Record<string, ExtraStatus | null>>({});
+  const [acceptance, setAcceptance] = useState<AcceptanceValue | null>(null);
+  const { agreements, setAgreements } = useRequiredAgreements(resource ? [resource.id, ...(repeat ? [] : extras)] : []);
+  const agreed = !!agreements && (agreements.length === 0 || !!acceptance);
 
   const myCategory = categories?.find((c) => c.id === (organisation ? organisation.pricing_category_id : user?.pricing_category_id));
   const iso = useMemo(() => windowToIso(win), [win]);
@@ -86,9 +90,12 @@ export default function BookResource() {
         ends_at: iso.endsAt,
         organisation_id: organisation?.id ?? null,
         provisional,
+        agreements: agreements?.length ? acceptance : null,
       });
       navigate(`/bookings/${booking.id}`);
     } catch (e) {
+      // A newer version of an agreement came into effect: show it to accept.
+      if (e instanceof ApiError && e.code === 'agreements_required') setAgreements((e.details as { required: RequiredAgreement[] }).required);
       setSubmitError(e instanceof ApiError ? e.message : 'Could not create booking');
     } finally {
       setSubmitting(false);
@@ -143,7 +150,7 @@ export default function BookResource() {
         </label>
 
         {repeat ? (
-          <RecurringBooking resourceId={resource.id} resourceName={resource.name} organisationId={organisation?.id ?? null} window={win} />
+          <RecurringBooking resourceId={resource.id} resourceName={resource.name} organisationId={organisation?.id ?? null} window={win} agreements={agreements} />
         ) : (
         <>
         <ExtraResources
@@ -172,9 +179,11 @@ export default function BookResource() {
           </span>
         </label>
 
+        {agreements && <AgreementAcceptance agreements={agreements} onChange={setAcceptance} idPrefix="book-agr" />}
+
         {submitError && <ErrorState message={submitError} />}
 
-        <button className="btn-primary w-full" onClick={submit} disabled={submitting || !quote || !extrasReady || ['conflict', 'closure', 'inactive', 'restricted'].includes(availability.status)}>
+        <button className="btn-primary w-full" onClick={submit} disabled={submitting || !quote || !extrasReady || !agreed || ['conflict', 'closure', 'inactive', 'restricted'].includes(availability.status)}>
           {submitting ? 'Submitting…' : provisional ? 'Hold provisionally' : resource.requires_approval ? 'Request booking' : 'Confirm booking'}
           {extras.length > 0 && !submitting ? ` (${extras.length + 1} resources)` : ''}
         </button>

@@ -4,6 +4,7 @@ import { addAdmin, addUser, createTestEnv } from './helpers/d1';
 import { call, sessionFor } from './helpers/http';
 import { loadAccess } from '../functions/_lib/auth';
 import { setAdminRole } from '../functions/_lib/admins';
+import { PERMISSIONS } from '../src/shared/permissions';
 import * as adminBookings from '../functions/api/admin/bookings';
 import * as approve from '../functions/api/admin/bookings/[id]';
 import * as pricing from '../functions/api/admin/pricing/rates/index';
@@ -32,11 +33,11 @@ afterEach(async () => {
 describe('role permissions (FR08)', () => {
   it('maps each role to the permission matrix', async () => {
     const superAccess = await loadAccess(env, 'super');
-    expect(superAccess.permissions).toHaveLength(12);
+    expect(superAccess.permissions).toHaveLength(PERMISSIONS.length);
     const booker = await loadAccess(env, 'booker');
     expect(booker.roles).toEqual(['booking_admin']);
     expect(booker.permissions).toEqual(
-      ['assets.manage', 'availability.manage', 'bookings.approve', 'bookings.create', 'bookings.manage', 'bookings.view', 'finance.view', 'resources.manage'],
+      ['assets.manage', 'audit.view', 'availability.manage', 'bookings.approve', 'bookings.create', 'bookings.manage', 'bookings.view', 'calendar.manage', 'finance.export', 'finance.view', 'maintenance.manage', 'resources.manage'],
     );
     expect((await loadAccess(env, 'viewer')).permissions).toEqual(['bookings.view', 'finance.view']);
     expect((await loadAccess(env, 'customer')).permissions).toEqual([]);
@@ -120,6 +121,6 @@ describe('administrator management (FR08)', () => {
     expect((await call(settings.onRequestPut, { env, cookie, method: 'PUT', body: { values: { email_logo_url: '' } } })).status).toBe(200);
     expect((await call(settings.onRequestPut, { env, cookie, method: 'PUT', body: { values: { email_logo_url: 'https://cdn.example/logo.png' } } })).status).toBe(200);
     // The site header uses the same logo, and anyone can read it.
-    expect((await call(site.onRequestGet, { env })).body).toEqual({ venue_name: '1st Stratton Scouts', logo_url: 'https://cdn.example/logo.png' });
+    expect((await call(site.onRequestGet, { env })).body).toEqual({ venue_name: '1st Stratton Scouts', logo_url: 'https://cdn.example/logo.png', venue_address: '' });
   });
 });

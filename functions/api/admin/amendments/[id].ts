@@ -84,7 +84,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
   const agreed: PriceBreakdown = JSON.parse(amendment.price_breakdown);
   const change = { ...plan.planned[0], price: agreed };
   const done = await guardedBatch(env, [
-    ...amendStatements(env, change, user.id, { amendment_id: id }),
+    ...amendStatements(env, change, user.id, { amendment_id: id, note: input.note ?? null }),
     decide('approved'),
     abortIf(env, 'changes() = 0'),
   ]);

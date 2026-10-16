@@ -3,6 +3,7 @@ import { error, json, newId } from '../../../_lib/http';
 import { requirePermission } from '../../../_lib/auth';
 import { parseBody } from '../../../_lib/request';
 import { categoryCreateSchema } from '@shared/validation';
+import { audited } from '../../../_lib/audit';
 
 // Admin: all categories, including retired ones.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
@@ -21,8 +22,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   const clash = await env.DB.prepare('SELECT 1 FROM pricing_categories WHERE name = ?').bind(input.name).first();
   if (clash) return error('A category with this name already exists', 409);
   const id = newId('cat');
-  await env.DB.prepare('INSERT INTO pricing_categories (id, name, label, sort_order, is_active, discount_bp) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, input.name, input.label, input.sort_order, input.is_active ? 1 : 0, input.discount_bp)
-    .run();
+  await audited(env, { actor: user, action: 'pricing.category_created', table: 'pricing_categories', id }, () =>
+    env.DB.prepare('INSERT INTO pricing_categories (id, name, label, sort_order, is_active, discount_bp) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(id, input.name, input.label, input.sort_order, input.is_active ? 1 : 0, input.discount_bp)
+      .run());
   return json({ id }, 201);
 };
