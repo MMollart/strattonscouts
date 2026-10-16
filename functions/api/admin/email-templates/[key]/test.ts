@@ -4,7 +4,7 @@ import { rateLimit, requirePermission } from '../../../../_lib/auth';
 import { parseBody } from '../../../../_lib/request';
 import { sendEmail } from '../../../../_lib/email';
 import { emailTestSchema } from '@shared/validation';
-import { SAMPLE_PARAMS, templateDefinition, unknownParams } from '@shared/email-templates';
+import { contentTexts, SAMPLE_PARAMS, templateDefinition, unknownParams } from '@shared/email-templates';
 
 // Admin: send the (unsaved) template with example values to yourself.
 export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }) => {
@@ -14,7 +14,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
   if (!def) return error('Template not found', 404);
   const input = await parseBody(request, emailTestSchema);
   if (input instanceof Response) return input;
-  const unknown = unknownParams(def.key, input.subject, input.body_text, input.body_html);
+  const unknown = unknownParams(def.key, ...contentTexts(input));
   if (unknown.length) return error(`Unknown parameters: ${unknown.map((u) => `{{ ${u} }}`).join(', ')}`, 400, { code: 'unknown_params', unknown });
   if (!(await rateLimit(env, user.id, 'email_test', 10, 60 * 60 * 1000))) return error('Too many test emails. Try again later.', 429);
   const result = await sendEmail(env, {

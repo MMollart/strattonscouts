@@ -1,11 +1,12 @@
 /**
- * The Scouts-branded email layout shared by every template, and the building
- * blocks the default HTML bodies are made from. Mail clients ignore most CSS,
- * so everything is tables and inline styles, in the Scouts brand palette and
- * Nunito Sans (falling back to Arial where web fonts don't load).
+ * The Scouts-branded email layout every email is sent in. An email is built
+ * from five sections, always in this order:
  *
- * Template bodies hold {{ placeholders }}; the blocks here only arrange them.
- * Values are escaped by renderEmail before they reach the layout.
+ *   {{ title }} {{ body }} {{ detail-card }} {{ thanks }} {{ footer }}
+ *
+ * Mail clients ignore most CSS, so everything is tables and inline styles, in
+ * the Scouts brand palette and Nunito Sans (falling back to Arial where web
+ * fonts don't load). Everything passed in here is already escaped HTML.
  */
 
 const FONT = "'Nunito Sans',Arial,Helvetica,sans-serif";
@@ -23,33 +24,67 @@ export const EMAIL_COLOURS = {
   grey: '#5c5c5c',
 } as const;
 
-type Colour = keyof typeof EMAIL_COLOURS;
+export type BadgeColour = keyof typeof EMAIL_COLOURS;
 
-/** The status pill above the headline. Yellow, pink and orange take black text. */
-export function badge(label: string, colour: Colour): string {
-  const text = colour === 'yellow' || colour === 'pink' || colour === 'orange' ? '#000000' : '#ffffff';
-  return `<p style="margin:0 0 16px 0;"><span style="display:inline-block;background:${EMAIL_COLOURS[colour]};color:${text};font-family:${FONT};font-weight:700;font-size:14px;line-height:20px;padding:6px 14px;border-radius:999px;">${label}</span></p>`;
+/** One body paragraph (lines already joined with <br>) or a call-to-action button. */
+export type BodyBlock = { kind: 'para'; html: string } | { kind: 'button'; label: string; url: string };
+
+export interface EmailSections {
+  /** Status pill above the title; fixed per template. */
+  badge?: { label: string; colour: BadgeColour };
+  title: string;
+  body: BodyBlock[];
+  /** [label, value] rows; empty hides the card. */
+  detailCard: [string, string][];
+  /** Lines of the sign-off; the last is bold. */
+  thanks: string[];
+  /** Lines of the footer; lines starting with # are bold. */
+  footer: string[];
 }
 
-export function headline(text: string): string {
+export interface LayoutOptions {
+  /** Window title (the subject). */
+  title: string;
+  /** Inbox preview line. */
+  preheader: string;
+  /** Logo image URL from Settings. Blank means no logo yet. */
+  logoUrl: string;
+  venueName: string;
+  /** Previews show where the logo will go while none is set. */
+  showLogoPlaceholder?: boolean;
+}
+
+function badge(b: NonNullable<EmailSections['badge']>): string {
+  const text = b.colour === 'yellow' || b.colour === 'pink' || b.colour === 'orange' ? '#000000' : '#ffffff';
+  return `<p style="margin:0 0 16px 0;"><span style="display:inline-block;background:${EMAIL_COLOURS[b.colour]};color:${text};font-family:${FONT};font-weight:700;font-size:14px;line-height:20px;padding:6px 14px;border-radius:999px;">${b.label}</span></p>`;
+}
+
+function title(text: string): string {
   return `<h1 class="headline" style="margin:0 0 24px 0;font-family:${FONT};font-weight:900;font-size:36px;line-height:40px;color:${EMAIL_COLOURS.purple};">${text}</h1>`;
 }
 
-export function para(html: string, opts: { muted?: boolean } = {}): string {
-  const colour = opts.muted ? EMAIL_COLOURS.grey : '#000000';
-  const size = opts.muted ? '15px;line-height:22px' : '17px;line-height:26px';
-  return `<p style="margin:0 0 16px 0;font-family:${FONT};font-size:${size};color:${colour};">${html}</p>`;
+function para(html: string): string {
+  return `<p style="margin:0 0 16px 0;font-family:${FONT};font-size:17px;line-height:26px;color:#000000;">${html}</p>`;
+}
+
+/** A call-to-action button, with the link written out underneath for clients that block buttons. */
+function button(label: string, url: string): string {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px 0;"><tr>
+<td style="background:${EMAIL_COLOURS.purple};border-radius:999px;"><a href="${url}" style="display:inline-block;padding:14px 28px;font-family:${FONT};font-weight:800;font-size:17px;line-height:22px;color:#ffffff;text-decoration:none;">${label}</a></td>
+</tr></table>
+<p style="margin:0 0 16px 0;font-family:${FONT};font-size:15px;line-height:22px;color:${EMAIL_COLOURS.grey};">Or copy this link into your browser:<br><a href="${url}" style="color:${EMAIL_COLOURS.purple};word-break:break-all;">${url}</a></p>`;
 }
 
 /** The pink panel of booking details. The first row is shown larger. */
-export function details(rows: [label: string, value: string][]): string {
+function detailCard(rows: [string, string][]): string {
+  if (!rows.length) return '';
   const cells = rows
     .map(([label, value], i) => {
       const pad = `${i === 0 ? 24 : 12}px 28px ${i === rows.length - 1 ? 24 : 0}px 28px`;
       const size = i === 0 ? 'font-weight:900;font-size:24px;line-height:30px' : 'font-weight:700;font-size:18px;line-height:26px';
+      const heading = label ? `<div style="font-weight:700;font-size:13px;line-height:18px;color:#333333;">${label}</div>\n` : '';
       return `<tr><td style="padding:${pad};font-family:${FONT};">
-<div style="font-weight:700;font-size:13px;line-height:18px;color:#333333;">${label}</div>
-<div style="${size};color:#000000;">${value}</div>
+${heading}<div style="${size};color:#000000;">${value}</div>
 </td></tr>`;
     })
     .join('\n');
@@ -58,30 +93,23 @@ ${cells}
 </table>`;
 }
 
-/** A call-to-action button, with the link written out underneath for clients that block buttons. */
-export function button(label: string, url: string): string {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px 0;"><tr>
-<td style="background:${EMAIL_COLOURS.purple};border-radius:999px;"><a href="${url}" style="display:inline-block;padding:14px 28px;font-family:${FONT};font-weight:800;font-size:17px;line-height:22px;color:#ffffff;text-decoration:none;">${label}</a></td>
-</tr></table>
-${para(`Or copy this link into your browser:<br><a href="${url}" style="color:${EMAIL_COLOURS.purple};word-break:break-all;">${url}</a>`, { muted: true })}`;
+function thanks(lines: string[]): string {
+  if (!lines.length) return '';
+  const html = lines.map((l, i) => (i === lines.length - 1 && lines.length > 1 ? `<strong>${l}</strong>` : l)).join('<br>');
+  return `<p style="margin:8px 0 0 0;font-family:${FONT};font-size:17px;line-height:26px;color:#000000;">${html}</p>`;
 }
 
-export function signOff(): string {
-  return `<p style="margin:8px 0 0 0;font-family:${FONT};font-size:17px;line-height:26px;color:#000000;">Thank you,<br><strong>{{ venue_name }}</strong></p>`;
-}
-
-export interface LayoutOptions {
-  /** Already escaped. */
-  title: string;
-  /** Inbox preview line; already escaped. */
-  preheader: string;
-  /** Logo image URL from Settings; already escaped. Blank means no logo yet. */
-  logoUrl: string;
-  /** Already escaped. Blank hides the contact line. */
-  contactEmail: string;
-  venueName: string;
-  /** Previews and test emails show where the logo will go while none is set. */
-  showLogoPlaceholder?: boolean;
+function footer(lines: string[]): string {
+  if (!lines.length) return '';
+  const rows = lines
+    .map((l, i) => {
+      const weight = l.startsWith('#') ? 900 : 400;
+      return `<div style="font-weight:${weight};font-size:16px;line-height:24px;color:#ffffff;${i > 0 && weight === 900 ? 'padding-top:12px;' : ''}">${l}</div>`;
+    })
+    .join('\n');
+  return `<tr><td class="pad" style="background:${EMAIL_COLOURS.teal};padding:28px 40px;font-family:${FONT};">
+${rows}
+</td></tr>`;
 }
 
 function logoRow(o: LayoutOptions): string {
@@ -92,12 +120,17 @@ function logoRow(o: LayoutOptions): string {
   return `<tr><td align="center" style="padding:0 0 24px 0;"><div style="display:inline-block;border:2px dashed #ffffff;border-radius:8px;padding:18px 32px;font-family:${FONT};font-weight:700;font-size:14px;line-height:20px;color:#ffffff;">Logo goes here (Admin → Settings → Email logo URL)</div></td></tr>`;
 }
 
-/** Wrap a template's HTML body in the branded page: purple background, white card, teal footer. */
-export function emailLayout(inner: string, o: LayoutOptions): string {
-  const contact = o.contactEmail
-    ? `<div style="font-weight:400;font-size:15px;line-height:22px;color:#ffffff;">Questions? Get in touch on</div>
-<div style="font-weight:700;font-size:20px;line-height:30px;"><a href="mailto:${o.contactEmail}" style="color:#ffffff;text-decoration:underline;">${o.contactEmail}</a></div>`
-    : '';
+/** Build the whole email: purple background, logo, white card holding the sections, teal footer. */
+export function emailLayout(s: EmailSections, o: LayoutOptions): string {
+  const card = [
+    s.badge ? badge(s.badge) : '',
+    title(s.title),
+    ...s.body.map((b) => (b.kind === 'button' ? button(b.label, b.url) : para(b.html))),
+    detailCard(s.detailCard),
+    thanks(s.thanks),
+  ]
+    .filter(Boolean)
+    .join('\n');
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -127,12 +160,9 @@ ${logoRow(o)}
 <tr><td>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;">
 <tr><td class="pad" style="padding:40px 40px 32px 40px;font-family:${FONT};font-size:17px;line-height:26px;color:#000000;">
-${inner}
+${card}
 </td></tr>
-<tr><td class="pad" style="background:${EMAIL_COLOURS.teal};padding:28px 40px;font-family:${FONT};">
-${contact}
-<div style="font-weight:900;font-size:15px;line-height:22px;color:#ffffff;${contact ? 'padding-top:16px;' : ''}">#PlaceToBelong</div>
-</td></tr>
+${footer(s.footer)}
 </table>
 </td></tr>
 </table>

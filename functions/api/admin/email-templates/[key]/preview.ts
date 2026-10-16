@@ -4,7 +4,7 @@ import { requirePermission } from '../../../../_lib/auth';
 import { parseBody } from '../../../../_lib/request';
 import { commonParams } from '../../../../_lib/email';
 import { emailTestSchema } from '@shared/validation';
-import { renderEmail, SAMPLE_PARAMS, templateDefinition, unknownParams } from '@shared/email-templates';
+import { contentTexts, renderEmail, SAMPLE_PARAMS, templateDefinition, unknownParams } from '@shared/email-templates';
 
 // Admin: render unsaved template content with example values.
 export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }) => {
@@ -15,5 +15,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
   const input = await parseBody(request, emailTestSchema);
   if (input instanceof Response) return input;
   const values = { ...(await commonParams(env, SAMPLE_PARAMS.customer_email)), ...SAMPLE_PARAMS };
-  return json({ ...renderEmail(input, values, { showLogoPlaceholder: true }), unknown: unknownParams(def.key, input.subject, input.body_text, input.body_html) });
+  return json({
+    ...renderEmail({ ...input, badge: def.badge }, values, { showLogoPlaceholder: true }),
+    unknown: unknownParams(def.key, ...contentTexts(input)),
+  });
 };
