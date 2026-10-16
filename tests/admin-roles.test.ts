@@ -37,7 +37,7 @@ describe('role permissions (FR08)', () => {
     const booker = await loadAccess(env, 'booker');
     expect(booker.roles).toEqual(['booking_admin']);
     expect(booker.permissions).toEqual(
-      ['assets.manage', 'audit.view', 'availability.manage', 'bookings.approve', 'bookings.create', 'bookings.manage', 'bookings.view', 'finance.view', 'resources.manage'],
+      ['assets.manage', 'audit.view', 'availability.manage', 'bookings.approve', 'bookings.create', 'bookings.manage', 'bookings.view', 'finance.view', 'maintenance.manage', 'resources.manage'],
     );
     expect((await loadAccess(env, 'viewer')).permissions).toEqual(['bookings.view', 'finance.view']);
     expect((await loadAccess(env, 'customer')).permissions).toEqual([]);

@@ -30,6 +30,7 @@ export const PERMISSIONS = [
   'settings.manage',
   'audit.view',
   'audit.export',
+  'maintenance.manage',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 

@@ -287,6 +287,8 @@ interface ClosureRow {
   starts_at: string;
   ends_at: string;
   reason: string | null;
+  maintenance_id: string | null;
+  fault_id: string | null;
 }
 
 function ClosuresPanel({ resources }: { resources: ResourceRow[] }) {
@@ -390,7 +392,13 @@ function ClosuresPanel({ resources }: { resources: ResourceRow[] }) {
               <p className="text-sm text-gray-600">{formatLondon(c.starts_at)} to {formatLondon(c.ends_at)}</p>
               {c.reason && <p className="text-xs text-gray-500">{c.reason}</p>}
             </div>
-            {canManage && <button type="button" className="btn-secondary" onClick={() => remove(c.id)}>Remove</button>}
+            {c.maintenance_id || c.fault_id ? (
+              <Link to="/admin/maintenance" className="text-sm font-bold text-scout-purple">
+                {c.maintenance_id ? 'Managed by maintenance' : 'Managed by a fault report'}
+              </Link>
+            ) : (
+              canManage && <button type="button" className="btn-secondary" onClick={() => remove(c.id)}>Remove</button>
+            )}
           </div>
         ))}
       </div>

@@ -34,6 +34,7 @@ import OrganisationDetail from './pages/OrganisationDetail';
 import Invitation from './pages/Invitation';
 import AdminOrganisations from './pages/admin/Organisations';
 import AdminAudit from './pages/admin/Audit';
+import AdminMaintenance from './pages/admin/Maintenance';
 
 function RequireAuth({ children, admin, permission }: { children: ReactNode; admin?: boolean; permission?: Permission }) {
   const { user, loading, isAdmin, can } = useAuth();
@@ -81,6 +82,7 @@ export default function App() {
           <Route path="/admin/assets" element={<RequireAuth admin permission="assets.manage"><AdminAssets /></RequireAuth>} />
           <Route path="/admin/emails" element={<RequireAuth admin><AdminEmails /></RequireAuth>} />
           <Route path="/admin/audit" element={<RequireAuth admin permission="bookings.view"><AdminAudit /></RequireAuth>} />
+          <Route path="/admin/maintenance" element={<RequireAuth admin permission="bookings.view"><AdminMaintenance /></RequireAuth>} />
           <Route path="/admin/settings" element={<RequireAuth admin permission="settings.manage"><AdminSettings /></RequireAuth>} />
 
           <Route path="*" element={<NotFound />} />

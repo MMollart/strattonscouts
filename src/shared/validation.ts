@@ -357,3 +357,54 @@ export const assetReturnSchema = z.object({
   outcome: z.enum(['available', 'damaged', 'lost']).default('available'),
   notes: optionalText(1000),
 });
+
+// ------------------------- Release 3 / FR22: maintenance -------------------
+
+export const MAINTENANCE_STATUSES = ['planned', 'in_progress', 'completed', 'cancelled'] as const;
+export const FAULT_SEVERITIES = ['low', 'medium', 'high', 'critical'] as const;
+export const FAULT_STATUSES = ['open', 'in_progress', 'resolved', 'closed'] as const;
+
+export const maintenanceSchema = z
+  .object({
+    resource_id: z.string().min(1),
+    maintenance_type_id: z.string().min(1),
+    title: z.string().trim().min(2).max(160),
+    description: z.string().max(4000).default(''),
+    starts_at: isoDateTime,
+    ends_at: isoDateTime,
+    status: z.enum(MAINTENANCE_STATUSES).default('planned'),
+    blocks_availability: z.boolean().default(true),
+    assigned_admin_id: z.string().min(1).nullable().optional(),
+    notes: z.string().max(4000).default(''),
+    /** Save over existing bookings anyway (§4.6); requires a reason. */
+    acknowledge_conflicts: z.boolean().optional(),
+    exception_reason: z.string().trim().max(500).optional(),
+  })
+  .refine((v) => new Date(v.ends_at).getTime() > new Date(v.starts_at).getTime(), { message: 'End must be after start', path: ['ends_at'] });
+export type MaintenanceInput = z.infer<typeof maintenanceSchema>;
+
+export const maintenanceTypeSchema = z.object({
+  label: z.string().trim().min(2).max(80),
+  sort_order: z.number().int().min(0).max(1000).default(0),
+  is_active: z.boolean().default(true),
+});
+
+export const maintenanceNotifySchema = z.object({
+  booking_ids: z.array(z.string().min(1)).max(500).optional(),
+  message: z.string().trim().max(2000).default(''),
+});
+
+export const affectedBookingSchema = z.object({
+  status: z.enum(['needs_action', 'resolved']),
+  resolution_note: z.string().trim().max(1000).optional(),
+});
+
+export const faultSchema = z.object({
+  resource_id: z.string().min(1),
+  description: z.string().trim().min(3).max(4000),
+  severity: z.enum(FAULT_SEVERITIES),
+  status: z.enum(FAULT_STATUSES).default('open'),
+  blocks_bookings: z.boolean().default(false),
+  resolution_notes: z.string().max(4000).default(''),
+});
+export type FaultInput = z.infer<typeof faultSchema>;

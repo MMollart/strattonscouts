@@ -8,6 +8,7 @@ apply (`npm run db:migrate:remote`) before the code that uses it is deployed.
 | Migration | Feature |
 | --- | --- |
 | `0017_audit_events.sql` | FR11 Booking & administration audit history |
+| `0018_maintenance.sql` | FR22 Resource maintenance & fault management |
 
 ## FR11 – Booking & administration audit history
 
@@ -101,3 +102,83 @@ values or reasons.
   period should be agreed as part of the UK GDPR review; because records are
   append-only, deleting old ones will need a deliberate, documented database
   operation.
+
+## FR22 – Resource maintenance & fault management
+
+**Records.** A maintenance record has a reference (`MNT-…`), the resource, a
+title and description, a type, start and end (entered in UK time), a status
+(planned, in progress, completed, cancelled), whether it blocks availability,
+an assigned administrator and internal notes. Records are never deleted;
+completed and cancelled work stays as history. Types are managed under
+*Admin → Maintenance → Maintenance types*; six are seeded (planned, emergency,
+repair, inspection, cleaning, other). A retired type stays on existing records
+but cannot be chosen for new ones.
+
+**Blocking uses the existing engine.** Maintenance that blocks availability
+owns one row in `resource_closures` (linked by `maintenance_id`). The row
+exists while the work is planned or in progress and is removed when it is
+completed or cancelled, or when blocking is switched off. Because it is an
+ordinary closure, the one availability engine applies it everywhere: new
+bookings, approvals, amendments, recurring series and the public calendar,
+with the resource hierarchy (maintenance on the Main Hall makes the Whole
+Venue unavailable; maintenance on the Whole Venue makes every part of it
+unavailable; siblings are unaffected). Such closures cannot be removed from
+the closures list; they follow their maintenance record.
+
+**Existing bookings are never cancelled.** If blocking maintenance overlaps
+active bookings (on the resource, anything it is part of, or anything part of
+it), saving is refused with the list of bookings. The administrator can save
+anyway by acknowledging them and giving a reason; the reason is stored on the
+record and in the audit log, and each booking is listed on the record as
+*needs action* until the administrator marks it resolved (with a note, for
+example "moved to the Small Hall"). Bookings already reviewed for a record do
+not need a new exception when it is edited. If someone books the period
+between the review and the save, the save is refused and the conflicts shown
+again.
+
+**Notifying customers.** *Email affected customers* sends the new
+*Maintenance notice* email template (editable under Admin → Emails, same
+five-box layout as the other emails) with an optional message. Each customer
+is emailed once per version of the record, so pressing it twice does not send
+twice, but a later change can be announced again.
+
+**Faults.** A fault has a reference (`FLT-…`), resource, description,
+severity (low, medium, high, critical), status (open, being fixed, resolved,
+closed), when and by whom it was reported, and resolution notes. A fault
+marked *prevents bookings* (ticked automatically for critical faults) closes
+the resource, through the same closure mechanism and hierarchy, from when it
+was reported until it is resolved or closed. Existing bookings are kept and
+listed so they can be followed up.
+
+**Calendar.** The admin calendar shows maintenance in orange stripes,
+distinct from bookings and from grey closure hatching, with filters for
+status and type alongside the existing resource and date controls. Clicking
+it opens the maintenance record. *Admin → Maintenance* lists records with
+filters for resource, type, status and date range.
+
+**Audit.** Creating, editing, starting, completing and cancelling
+maintenance, saving over bookings (with the reason), resolving affected
+bookings, notifying customers, maintenance type changes, and reporting,
+updating and resolving faults are all recorded in the audit history.
+
+**Permissions.**
+
+| | Super Admin | Booking Admin | Viewer |
+| --- | :-: | :-: | :-: |
+| View maintenance and faults | ✓ | ✓ | ✓ |
+| Schedule maintenance, report faults, notify customers (`maintenance.manage`) | ✓ | ✓ | |
+
+### Decisions
+
+- *How maintenance blocks bookings:* (a) a separate maintenance check in the
+  availability code, (b) a closure row owned by the record. Chose (b): there
+  is still one availability engine, so the hierarchy and every booking path
+  apply without new code, and the public calendar shows the time as closed
+  without revealing why.
+- *Faults that prevent bookings:* block from when the fault was reported
+  until it is resolved, rather than asking for an end date the administrator
+  does not know yet.
+- *Who can manage maintenance:* Super Admins and Booking Admins, as they run
+  day-to-day availability; Viewers can see it.
+- *Attachments* (spec §9, "where appropriate") are not added yet; photos and
+  contractor documents can follow using the R2 upload used for agreements.
