@@ -87,6 +87,9 @@ export function Footer() {
         <p className="mt-4 opacity-60">
           We handle your data in line with UK GDPR. Contact details are used only to manage your bookings.
         </p>
+        <p className="mt-4">
+          <Link to="/release-notes" className="font-bold hover:underline">What’s new</Link>
+        </p>
       </div>
     </footer>
   );
