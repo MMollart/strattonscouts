@@ -40,11 +40,19 @@ export function Header() {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
         <Link to="/" className="flex items-center gap-3">
           {site?.logo_url && !logoFailed ? (
-            <img src={site.logo_url} alt="" className="h-14 w-auto max-w-[14rem] object-contain md:h-20 md:max-w-[18rem]" onError={() => setLogoFailed(true)} />
+            // The logo replaces the name, so it carries the name for screen readers.
+            <img
+              src={site.logo_url}
+              alt="Stratton Scouts Resource Booking"
+              className="h-14 w-auto max-w-[14rem] object-contain md:h-20 md:max-w-[18rem]"
+              onError={() => setLogoFailed(true)}
+            />
           ) : (
-            <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-scout-purple font-black">SS</span>
+            <>
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-scout-purple font-black">SS</span>
+              <span className="text-lg font-extrabold leading-tight">Stratton Scouts<br /><span className="text-xs font-semibold opacity-80">Resource Booking</span></span>
+            </>
           )}
-          <span className="text-lg font-extrabold leading-tight">Stratton Scouts<br /><span className="text-xs font-semibold opacity-80">Resource Booking</span></span>
         </Link>
         <nav className="hidden items-center gap-5 md:flex">{nav}</nav>
         <button
