@@ -19,8 +19,6 @@ interface DiscountRow {
   effective_from: string; effective_to: string | null; is_active: boolean;
 }
 
-type Tab = 'rates' | 'discounts' | 'categories' | 'organisations';
-
 /** A London calendar date as the start-of-day instant, or null for blank. */
 function dateToIso(date: string): string | null {
   return date ? fromLondon(date, '00:00') : null;
@@ -30,51 +28,65 @@ function period(from: string, to: string | null): string {
   return to ? `${f} until ${formatLondon(to, { dateStyle: 'medium' })}` : f;
 }
 
-export default function AdminPricing() {
+/** Loads what every pricing page chooses from, under a shared heading. */
+function PricingPage({ title, intro, children }: {
+  title: string;
+  intro: string;
+  children: (data: { resources: ResourceRow[]; categories: CategoryRow[]; reloadCategories: () => Promise<void> }) => React.ReactNode;
+}) {
   const { data: resources, loading, error } = useApi<ResourceRow[]>('/admin/resources');
   const { data: categories, setData: setCategories } = useApi<CategoryRow[]>('/admin/categories');
-  const [tab, setTab] = useState<Tab>('rates');
 
   if (loading) return <Spinner />;
   if (error) return <ErrorState message={error} />;
   if (!resources) return null;
 
-  const tabs: [Tab, string][] = [
-    ['rates', 'Prices'],
-    ['discounts', 'Discounts'],
-    ['organisations', 'Organisation pricing'],
-    ['categories', 'Categories'],
-  ];
-
   return (
     <div>
-      <h1 className="text-3xl">Pricing</h1>
-      <p className="mt-2 text-sm text-gray-600">Changes apply to bookings priced from now on. Existing bookings keep the price agreed when they were made.</p>
-
-      <div className="mt-6 flex flex-wrap gap-2" role="tablist">
-        {tabs.map(([key, label]) => (
-          <button
-            key={key}
-            role="tab"
-            aria-selected={tab === key}
-            className={tab === key ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => setTab(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'rates' && <RatesPanel resources={resources} categories={categories ?? []} />}
-      {tab === 'discounts' && <DiscountsPanel resources={resources} categories={categories ?? []} />}
-      {tab === 'organisations' && <OrganisationPricingPanel resources={resources} />}
-      {tab === 'categories' && (
-        <CategoriesPanel
-          categories={categories ?? []}
-          reload={async () => setCategories(await api.get<CategoryRow[]>('/admin/categories'))}
-        />
-      )}
+      <h1 className="text-3xl">{title}</h1>
+      <p className="mt-2 text-sm text-gray-600">{intro} Changes apply to bookings priced from now on; existing bookings keep the price agreed when they were made.</p>
+      {children({
+        resources,
+        categories: categories ?? [],
+        reloadCategories: async () => setCategories(await api.get<CategoryRow[]>('/admin/categories')),
+      })}
     </div>
+  );
+}
+
+/** Admin: base prices for each resource. */
+export default function AdminPricing() {
+  return (
+    <PricingPage title="Prices" intro="The base price of each resource, and what each category pays.">
+      {({ resources, categories }) => <RatesPanel resources={resources} categories={categories} />}
+    </PricingPage>
+  );
+}
+
+/** Admin: discounts by resource, category and date. */
+export function AdminDiscounts() {
+  return (
+    <PricingPage title="Discounts" intro="Percentage or fixed discounts for a resource, a category or a period.">
+      {({ resources, categories }) => <DiscountsPanel resources={resources} categories={categories} />}
+    </PricingPage>
+  );
+}
+
+/** Admin: special arrangements for named organisations. */
+export function AdminOrganisationPricing() {
+  return (
+    <PricingPage title="Organisation pricing" intro="Special rates, discounts or free use agreed with a particular organisation.">
+      {({ resources }) => <OrganisationPricingPanel resources={resources} />}
+    </PricingPage>
+  );
+}
+
+/** Admin: the pricing categories customers fall into. */
+export function AdminPricingCategories() {
+  return (
+    <PricingPage title="Pricing categories" intro="The categories customers are priced by, such as Scouts or General Public.">
+      {({ categories, reloadCategories }) => <CategoriesPanel categories={categories} reload={reloadCategories} />}
+    </PricingPage>
   );
 }
 

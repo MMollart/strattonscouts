@@ -41,7 +41,10 @@ export const ADMIN_MENU: AdminMenuGroup[] = [
     title: 'Pricing',
     description: 'What bookings cost.',
     items: [
-      { to: '/admin/pricing', label: 'Prices & discounts', description: 'Rates, discounts, organisation pricing and categories.' },
+      { to: '/admin/pricing', label: 'Prices', description: 'Base prices for each resource and category.' },
+      { to: '/admin/pricing/discounts', label: 'Discounts', description: 'Discounts by resource, category or date.' },
+      { to: '/admin/pricing/organisations', label: 'Organisation pricing', description: 'Special arrangements with particular organisations.' },
+      { to: '/admin/pricing/categories', label: 'Pricing categories', description: 'The categories customers are priced by.' },
     ],
   },
   {

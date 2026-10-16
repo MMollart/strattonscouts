@@ -25,7 +25,7 @@ import AdminDashboard from './pages/admin/Dashboard';
 import AdminResources from './pages/admin/Resources';
 import AdminBookings from './pages/admin/Bookings';
 import AdminUsers from './pages/admin/Users';
-import AdminPricing from './pages/admin/Pricing';
+import AdminPricing, { AdminDiscounts, AdminOrganisationPricing, AdminPricingCategories } from './pages/admin/Pricing';
 import AdminAdmins from './pages/admin/Admins';
 import AdminSettings from './pages/admin/Settings';
 import NotFound from './pages/NotFound';
@@ -88,6 +88,9 @@ export default function App() {
             <Route path="/admin/organisations" element={<AdminOrganisations />} />
             <Route path="/admin/users" element={<AdminUsers />} />
             <Route path="/admin/pricing" element={<AdminPricing />} />
+            <Route path="/admin/pricing/discounts" element={<AdminDiscounts />} />
+            <Route path="/admin/pricing/organisations" element={<AdminOrganisationPricing />} />
+            <Route path="/admin/pricing/categories" element={<AdminPricingCategories />} />
             <Route path="/admin/admins" element={<RequireAuth admin permission="admins.manage"><AdminAdmins /></RequireAuth>} />
             <Route path="/admin/calendar" element={<AdminCalendar />} />
             <Route path="/admin/assets" element={<RequireAuth admin permission="assets.manage"><AdminAssets /></RequireAuth>} />
