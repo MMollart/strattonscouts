@@ -10,9 +10,9 @@ export interface ReleaseNote {
 
 export const releaseNotes: ReleaseNote[] = [
   {
-    title: 'Release 3: audit history and maintenance',
+    title: 'Release 3: audit history, maintenance and agreements',
     date: '2026-10-16',
-    summary: 'Administrators can see who changed what, and plan maintenance without double-booking the hall.',
+    summary: 'Administrators can see who changed what, plan maintenance without double-booking the hall, and ask customers to accept the hire conditions.',
     changes: [
       'A full history of every booking and every change administrators make, with who made it, when, what changed and why.',
       'History is shown on each booking, organisation and resource, and can be searched and exported.',
@@ -20,6 +20,9 @@ export const releaseNotes: ReleaseNote[] = [
       'Existing bookings are never cancelled by maintenance. They are listed so an administrator can contact the group, and customers can be emailed a maintenance notice.',
       'Faults can be reported with a severity. Serious ones stop the resource being booked until they are fixed.',
       'Maintenance appears on the administrators’ calendar in orange stripes.',
+      'When you book, you are shown any agreements for what you are booking, such as our hire conditions, and asked to tick to accept each one and type your name. You can also draw a signature.',
+      'You can see the agreements you accepted, word for word, on each booking.',
+      'If you change a booking to somewhere with different terms, you are asked to accept just the new ones.',
     ],
   },
   {

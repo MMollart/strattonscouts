@@ -9,6 +9,7 @@ import { formatLondon } from '@shared/londonTime';
 import { AmendmentPanel } from '../components/AmendmentPanel';
 import { RESTRICTION_LABEL, type RestrictionKind } from '@shared/availability-rules';
 import { HistoryPanel } from '../components/HistoryPanel';
+import { AcceptedAgreements } from '../components/AcceptedAgreements';
 
 interface BookingDetail {
   id: string;
@@ -186,6 +187,7 @@ export default function BookingDetails() {
         </button>
       )}
 
+      <AcceptedAgreements bookingId={data.id} />
       {isAdmin && <HistoryPanel filters={{ booking_id: data.id }} title="Booking history" />}
     </div>
   );

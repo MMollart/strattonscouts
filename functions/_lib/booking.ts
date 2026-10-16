@@ -13,6 +13,7 @@ import { checkRestrictions } from './restrictions';
 import type { RestrictionKind, RuleViolation } from '@shared/availability-rules';
 import { OVERRIDABLE } from '@shared/availability-rules';
 import { provisionalExpiry, provisionalHoldHours } from './provisional';
+import { acceptanceStatements, type RequiredAgreement, type SignatureDraft } from './agreements';
 
 /** An authorised administrator's override of booking restrictions (FR03). */
 export interface RestrictionOverride {
@@ -35,6 +36,18 @@ export interface CreateBookingParams {
   provisional?: boolean;
   /** Hold period for this booking; the caller has checked bookings.manage. */
   provisionalExpiryHours?: number | null;
+  /** Agreements accepted with this booking (FR20); the caller has checked them. */
+  acceptance?: BookingAcceptance | null;
+}
+
+export interface BookingAcceptance {
+  signature: SignatureDraft;
+  agreements: RequiredAgreement[];
+}
+
+/** The accepted agreements that apply to one resource. */
+export function agreementsFor(acceptance: BookingAcceptance | null | undefined, resourceId: string): RequiredAgreement[] {
+  return acceptance?.agreements.filter((a) => a.resource_ids.includes(resourceId)) ?? [];
 }
 
 export type CreateBookingFailure = {
@@ -253,7 +266,11 @@ export async function createBookingAtomic(params: CreateBookingParams): Promise<
   const prepared = await prepareBooking(params);
   if (!prepared.ok) return prepared;
   const d = prepared.draft;
-  const [bookingResult] = await params.env.DB.batch(bookingInsertStatements(params.env, d));
+  const statements = bookingInsertStatements(params.env, d);
+  if (params.acceptance) {
+    statements.push(...acceptanceStatements(params.env, params.acceptance.signature, [{ bookingId: d.id, agreements: agreementsFor(params.acceptance, d.resourceId) }]));
+  }
+  const [bookingResult] = await params.env.DB.batch(statements);
   if (bookingResult.meta.changes !== 1) {
     return { ok: false, code: 'conflict', message: 'The requested period is no longer available' };
   }

@@ -5,6 +5,7 @@ import { ErrorState } from './ui';
 import { BookingWindowFields, type BookingWindow, windowToIso } from './BookingWindowFields';
 import { PriceSummary } from './PriceSummary';
 import { formatGBP, type PriceBreakdown } from '@shared/pricing';
+import { AgreementAcceptance, type AcceptanceValue, type RequiredAgreement } from './AgreementAcceptance';
 import { formatLondon, londonToday, toLondon } from '@shared/londonTime';
 
 interface Amendment {
@@ -28,6 +29,8 @@ interface Quote {
   price: PriceBreakdown;
   current_total_pence: number;
   difference_pence: number;
+  /** Agreements this change brings in that the booking has not accepted (FR20). */
+  agreements_required: RequiredAgreement[];
 }
 
 const AMENDMENT_BADGE: Record<Amendment['status'], [string, string]> = {
@@ -65,6 +68,7 @@ export function AmendmentPanel({
   const [quote, setQuote] = useState<Quote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
+  const [acceptance, setAcceptance] = useState<AcceptanceValue | null>(null);
   const iso = windowToIso(win);
   const pending = history?.find((a) => a.status === 'pending');
 
@@ -95,7 +99,7 @@ export function AmendmentPanel({
     setWorking(true);
     setError(null);
     try {
-      await api.post(`/bookings/${booking.id}/amendments`, { resource_id: resourceId, starts_at: iso.startsAt, ends_at: iso.endsAt, note: note.trim() || null });
+      await api.post(`/bookings/${booking.id}/amendments`, { resource_id: resourceId, starts_at: iso.startsAt, ends_at: iso.endsAt, note: note.trim() || null, agreements: quote?.agreements_required.length ? acceptance : null });
       setOpen(false);
       setQuote(null);
       await reload();
@@ -160,11 +164,14 @@ export function AmendmentPanel({
               </p>
             </div>
           )}
+          {quote && quote.agreements_required.length > 0 && (
+            <AgreementAcceptance agreements={quote.agreements_required} onChange={setAcceptance} idPrefix="am-agr" />
+          )}
           {error && <ErrorState message={error} />}
           <div className="flex flex-wrap gap-2">
             {!quote
               ? <button type="button" className="btn-primary" onClick={check} disabled={working || !iso}>{working ? 'Checking…' : 'Check availability and price'}</button>
-              : <button type="button" className="btn-primary" onClick={submit} disabled={working}>{working ? 'Sending…' : 'Send change request'}</button>}
+              : <button type="button" className="btn-primary" onClick={submit} disabled={working || (quote.agreements_required.length > 0 && !acceptance)}>{working ? 'Sending…' : 'Send change request'}</button>}
             <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
           </div>
           <p className="text-xs text-gray-500">All changes are approved by an administrator. Your current booking is kept until then.</p>

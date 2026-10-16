@@ -49,6 +49,7 @@ export async function createTestEnv(
     modules: true,
     script: 'export default { fetch() { return new Response(null) } }',
     d1Databases: { DB: crypto.randomUUID() },
+    r2Buckets: ['BUCKET'],
   });
   const db = (await mf.getD1Database('DB')) as unknown as D1Database;
   // stopBefore holds back that migration and later ones, so a test can shape
@@ -62,7 +63,8 @@ export async function createTestEnv(
   };
   await apply(now);
   if (!opts.migratedPrices && cut === -1) await applyTestPrices(db);
-  const env = { DB: db, ENVIRONMENT: 'test', APP_BASE_URL: 'http://localhost' } as unknown as Env;
+  const bucket = (await mf.getR2Bucket('BUCKET')) as unknown as R2Bucket;
+  const env = { DB: db, BUCKET: bucket, ENVIRONMENT: 'test', APP_BASE_URL: 'http://localhost' } as unknown as Env;
   return { env, db, dispose: () => mf.dispose(), applyRemaining: () => apply(later) };
 }
 

@@ -9,6 +9,7 @@ apply (`npm run db:migrate:remote`) before the code that uses it is deployed.
 | --- | --- |
 | `0017_audit_events.sql` | FR11 Booking & administration audit history |
 | `0018_maintenance.sql` | FR22 Resource maintenance & fault management |
+| `0019_agreements.sql` | FR20 Booking agreements & digital acceptance |
 
 ## FR11 – Booking & administration audit history
 
@@ -182,3 +183,82 @@ updating and resolving faults are all recorded in the audit history.
   day-to-day availability; Viewers can see it.
 - *Attachments* (spec §9, "where appropriate") are not added yet; photos and
   contractor documents can follow using the R2 upload used for agreements.
+
+## FR20 – Booking agreements & digital acceptance
+
+**Templates and versions.** Admin → Agreements holds agreement templates
+(for example hire conditions or a safeguarding policy). Each has numbered
+versions with formatted text (headings, lists, bold, italic and links, using
+a small safe syntax rendered without HTML), an effective date and time (UK),
+an optional note of what changed, and an optional PDF. A published version
+can never be edited or deleted (database triggers refuse it); changing the
+wording means publishing a new version. Each version stores a SHA-256 hash of
+its title, text and PDF.
+
+**Where they apply.** A template applies to every booking, or to the
+resources it is assigned to and everything that is part of them (an
+agreement on the Whole Venue applies to the Main Hall; one on the Kitchen
+does not apply to the Whole Venue). A booking of several resources, or a
+recurring series, needs every agreement that applies to any of them. The
+version required is the latest whose effective date has passed, so a new
+version can be scheduled in advance. Templates can be retired; bookings then
+stop asking for them and past acceptances are kept. Until an agreement is
+published, bookings work exactly as before.
+
+**Accepting.** The booking form shows the text of each agreement with its own
+unticked checkbox (never preselected), a link to the PDF where there is one,
+a typed full-name signature and an optional drawn signature (saved as a PNG).
+The server checks that every applicable version was accepted and signed; if
+a newer version came into effect while the form was open, it refuses and the
+form shows the new version to accept. Acceptances are written in the same
+transaction as the booking, so a booking that loses a race leaves no
+acceptance behind. Each acceptance records the booking, the version, the
+content hash, who accepted, when, and the signature. One signature is stored
+per act of accepting and shared by its acceptances, so a 40-week series does
+not store the drawing 40 times. Acceptances and signatures cannot be changed
+or deleted, and each one is copied into the audit history by a trigger.
+
+**On behalf of a customer.** When an administrator books for a customer, they
+accept on the customer's behalf; the acceptance records the administrator as
+the person who accepted and the customer as the person it was for.
+
+**Change requests.** A change request asks for acceptance only when the
+change brings in a version the booking has not already accepted: moving to a
+resource with a different agreement, or after a new version took effect.
+Those acceptances are linked to the change request. Administrator-made
+changes do not ask the customer to accept anything.
+
+**Viewing.** Each booking page lists the agreements accepted for it, with the
+exact wording of the accepted version, when and by whom, and the content
+hash. The customer, organisation managers and administrators who manage
+bookings also see the typed name and drawn signature. Admin → Agreements
+shows each template's versions, where it applies, and who has accepted it.
+
+**Documents.** PDFs are stored in R2 under `agreements/`, which the public
+image route does not serve. They are only downloaded through
+`/api/agreements/versions/:id/pdf`, which requires a signed-in user and is
+never cached publicly. Files must be real PDFs (checked by content) of 10 MB
+or less.
+
+**Permissions.**
+
+| | Super Admin | Booking Admin | Viewer |
+| --- | :-: | :-: | :-: |
+| Create agreements, publish versions, assign resources (`agreements.manage`) | ✓ | | |
+| View agreements, versions and acceptances | ✓ | ✓ | ✓ |
+| See typed names and drawn signatures | ✓ | ✓ | |
+
+### Decisions
+
+- *Which version applies:* (a) the version in effect when the booking is
+  made, (b) the version in effect on the booking date. Chose (a): the
+  customer accepts the terms they are shown at the time they book.
+- *Agreements on parent resources:* apply to everything that is part of the
+  resource, matching how the hierarchy already works for availability.
+- *Formatted text:* (a) rich HTML, (b) a small Markdown-like syntax rendered
+  without HTML. Chose (b): administrators can format and link, and nothing
+  typed can run as script in a customer's browser.
+- *Viewer restricted view:* Viewers see which agreement and version was
+  accepted and when, but not the typed name or drawn signature.
+- *Administrator changes to a booking* do not ask for re-acceptance, because
+  the customer did not make the change; a customer change request does.

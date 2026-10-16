@@ -8,6 +8,8 @@ import { abortIf, guardedBatch } from './txn';
 import { evaluateRestrictions } from '@shared/availability-rules';
 import { generateOccurrences, type RecurrencePattern } from '@shared/recurrence';
 import type { PriceBreakdown } from '@shared/pricing';
+import { agreementsFor, type BookingAcceptance } from './booking';
+import { seriesAcceptanceStatements } from './agreements';
 import type { BookingStatus } from '@shared/types';
 
 /**
@@ -95,7 +97,7 @@ export type CreateSeriesResult =
  * written by the same atomic conditional insert as a single booking, and a
  * guard rolls the batch back if any of them lost a race.
  */
-export async function createSeries(env: Env, req: SeriesRequest, excludeDates: string[]): Promise<CreateSeriesResult> {
+export async function createSeries(env: Env, req: SeriesRequest, excludeDates: string[], acceptance: BookingAcceptance | null = null): Promise<CreateSeriesResult> {
   const preview = await previewSeries(env, req);
   if (!preview.ok) return preview;
   const excluded = new Set(excludeDates);
@@ -155,6 +157,7 @@ export async function createSeries(env: Env, req: SeriesRequest, excludeDates: s
        SELECT 'bev_' || lower(hex(randomblob(16))), id, ?, ?, ?, ? FROM bookings WHERE series_id = ?`,
     ).bind(drafts[0].eventType, req.actorId, JSON.stringify({ series_id: seriesId }), ts, seriesId),
   );
+  if (acceptance) statements.push(...seriesAcceptanceStatements(env, acceptance.signature, seriesId, agreementsFor(acceptance, req.resourceId)));
 
   const result = await guardedBatch(env, statements);
   if (!result) return { ok: false, code: 'conflict', message: 'Some of these dates were booked by someone else just now. Please check again.' };

@@ -126,7 +126,7 @@ const TABLES = {
   maintenance_records: { entityType: 'maintenance', key: 'id', label: 'title' },
   maintenance_types: { entityType: 'maintenance_type', key: 'id', label: 'label' },
   resource_faults: { entityType: 'fault', key: 'id', label: 'description' },
-  agreement_templates: { entityType: 'agreement', key: 'id', label: 'name' },
+  agreement_templates: { entityType: 'agreement', key: 'id', label: 'title' },
 } as const;
 export type AuditedTable = keyof typeof TABLES;
 

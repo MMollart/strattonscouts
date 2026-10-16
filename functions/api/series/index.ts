@@ -3,6 +3,7 @@ import { error, json } from '../../_lib/http';
 import { getAuthUser } from '../../_lib/auth';
 import { parseBody } from '../../_lib/request';
 import { createSeries, seriesDateText } from '../../_lib/recurring';
+import { checkAcceptance, requiredAgreements, signatureDraft } from '../../_lib/agreements';
 import { resolveSeriesRequest } from '../../_lib/series-request';
 import { bookingTimeParams, sendEmail } from '../../_lib/email';
 import { seriesCreateSchema } from '@shared/validation';
@@ -19,7 +20,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   const req = await resolveSeriesRequest(env, user, input);
   if (req instanceof Response) return req;
 
-  const result = await createSeries(env, req, input.exclude_dates);
+  const required = await requiredAgreements(env, [req.resourceId]);
+  const accepted = checkAcceptance(required, input.agreements);
+  if (!accepted.ok) return accepted.response;
+  const acceptance = accepted.accepted.length ? { signature: signatureDraft(input.agreements!, user.id, req.userId), agreements: accepted.accepted } : null;
+
+  const result = await createSeries(env, req, input.exclude_dates, acceptance);
   if (!result.ok) {
     const status = result.code === 'unavailable' || result.code === 'conflict' ? 409 : result.code === 'resource_not_found' ? 404 : 400;
     return error(result.message, status, { code: result.code, ...('occurrences' in result ? { occurrences: result.occurrences } : {}) });

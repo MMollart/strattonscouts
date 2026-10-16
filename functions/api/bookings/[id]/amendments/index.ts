@@ -4,6 +4,7 @@ import { getAuthUser } from '../../../../_lib/auth';
 import { parseBody } from '../../../../_lib/request';
 import { bookingAccess } from '../../../../_lib/booking-access';
 import { checkAmendment } from '../../../../_lib/amendments';
+import { acceptanceStatements, acceptedVersionIds, checkAcceptance, requiredAgreements, signatureDraft } from '../../../../_lib/agreements';
 import { amendmentRequestSchema } from '@shared/validation';
 
 // Amendment history for a booking, for anyone who can view it.
@@ -41,6 +42,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
   if (!check.ok) return error(check.message, check.status, { code: check.code, problems: check.problems });
   const { booking, planned } = check;
 
+  // Agreements need accepting again only if the change brings in a version
+  // this booking has not accepted (a different resource, or a newer version).
+  const accepted = await acceptedVersionIds(env, booking.id);
+  const needed = (await requiredAgreements(env, [planned.resourceId])).filter((r) => !accepted.has(r.version_id));
+  const acceptance = checkAcceptance(needed, input.agreements);
+  if (!acceptance.ok) return acceptance.response;
+
   const id = newId('amd');
   const ts = now();
   try {
@@ -61,6 +69,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
           to: { resource_id: planned.resourceId, starts_at: planned.startsAt, ends_at: planned.endsAt, total_amount_pence: planned.price.total_pence },
           note: input.note ?? null,
         }), ts),
+      ...(acceptance.accepted.length
+        ? acceptanceStatements(env, signatureDraft(input.agreements!, user.id, booking.user_id), [{ bookingId: booking.id, agreements: acceptance.accepted }], id)
+        : []),
     ]);
   } catch (e) {
     if (String(e).includes('UNIQUE')) return error('This booking already has a change request waiting for approval', 409, { code: 'pending_exists' });

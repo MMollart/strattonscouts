@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
@@ -6,6 +6,7 @@ import { useAuth } from '../../lib/auth';
 import { EmptyState, ErrorState, Spinner, StatusBadge } from '../../components/ui';
 import { BookingWindowFields, windowToIso, type BookingWindow } from '../../components/BookingWindowFields';
 import { HistoryPanel } from '../../components/HistoryPanel';
+import { Dialog } from '../../components/Dialog';
 import { formatLondon, fromLondon, londonToday, toLondon } from '@shared/londonTime';
 import { FAULT_SEVERITIES, FAULT_STATUSES, MAINTENANCE_STATUSES } from '@shared/validation';
 
@@ -95,35 +96,6 @@ function isoToWindow(startsAt: string, endsAt: string): BookingWindow {
   const s = toLondon(startsAt);
   const e = toLondon(endsAt);
   return { startDate: s.date, startTime: s.time, endDate: e.date, endTime: e.time };
-}
-
-/** A native modal dialog: focus moves inside and stays there, Escape closes it. */
-function Dialog({ title, id, onClose, children, wide }: { title: string; id: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    if (dialog && !dialog.open) dialog.showModal();
-    return () => dialog?.close();
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      aria-labelledby={id}
-      className={`w-full ${wide ? 'max-w-2xl' : 'max-w-lg'} bg-transparent p-0 backdrop:bg-black/40`}
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
-    >
-      <div className="card w-full space-y-4">
-        <div className="flex items-start justify-between gap-2">
-          <h2 id={id} className="text-2xl">{title}</h2>
-          <button type="button" className="text-sm font-bold text-scout-purple" onClick={onClose}>Close</button>
-        </div>
-        {children}
-      </div>
-    </dialog>
-  );
 }
 
 /** Admin: planned and emergency maintenance, and faults (FR22). */
