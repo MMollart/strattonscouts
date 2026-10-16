@@ -53,10 +53,7 @@ export default function AdminUsers() {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-3xl">Users</h1>
-        <div className="flex gap-3 text-sm font-bold text-scout-purple">
-          {can('admins.manage') && <Link to="/admin/admins">Administrators</Link>}
-          <Link to="/admin">← Dashboard</Link>
-        </div>
+        {can('admins.manage') && <Link to="/admin/admins" className="text-sm font-bold text-scout-purple">Administrators</Link>}
       </div>
 
       {actionError && <div className="mt-4"><ErrorState message={actionError} /></div>}

@@ -84,10 +84,7 @@ export default function AdminAgreements() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Agreements</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
-      </div>
+      <h1 className="text-3xl">Agreements</h1>
       <p className="mt-1 text-sm text-gray-600">
         Terms customers must read and accept when they book. An agreement applies to every booking, or to the resources you choose and everything that is part of them.
         Published versions never change: to change the wording, publish a new version with the date it takes effect.

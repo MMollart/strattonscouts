@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { EmptyState, ErrorState, Spinner } from '../../components/ui';
@@ -71,10 +70,7 @@ export default function AdminAssets() {
   const [tab, setTab] = useState<'outstanding' | 'register' | 'types'>('outstanding');
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Assets</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
-      </div>
+      <h1 className="text-3xl">Assets</h1>
       <div role="tablist" className="mt-4 flex flex-wrap gap-2">
         {([['outstanding', 'On loan'], ['register', 'Register'], ['types', 'Asset types']] as const).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab(k)}>{label}</button>

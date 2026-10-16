@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
@@ -49,10 +48,7 @@ export default function AdminPricing() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Pricing</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
-      </div>
+      <h1 className="text-3xl">Pricing</h1>
       <p className="mt-2 text-sm text-gray-600">Changes apply to bookings priced from now on. Existing bookings keep the price agreed when they were made.</p>
 
       <div className="mt-6 flex flex-wrap gap-2" role="tablist">

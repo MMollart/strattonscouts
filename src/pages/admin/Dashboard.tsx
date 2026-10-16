@@ -3,6 +3,7 @@ import { useApi } from '../../lib/useApi';
 import { Spinner, ErrorState, StatusBadge } from '../../components/ui';
 import { formatLondon } from '@shared/londonTime';
 import { useAuth } from '../../lib/auth';
+import { visibleMenu } from './menu';
 
 interface Dashboard {
   upcoming_bookings: number;
@@ -29,32 +30,33 @@ export default function AdminDashboard() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl">Administration</h1>
-        <nav className="flex flex-wrap gap-2 text-sm">
-          <Link to="/admin/bookings" className="btn-secondary">Bookings</Link>
-          <Link to="/admin/calendar" className="btn-secondary">Calendar</Link>
-          <Link to="/admin/resources" className="btn-secondary">Resources</Link>
-          <Link to="/admin/pricing" className="btn-secondary">Pricing</Link>
-          <Link to="/admin/users" className="btn-secondary">Users</Link>
-          <Link to="/admin/organisations" className="btn-secondary">Organisations</Link>
-          <Link to="/admin/emails" className="btn-secondary">Emails</Link>
-          {can('assets.manage') && <Link to="/admin/assets" className="btn-secondary">Assets</Link>}
-          {can('bookings.view') && <Link to="/admin/maintenance" className="btn-secondary">Maintenance</Link>}
-          {can('bookings.view') && <Link to="/admin/agreements" className="btn-secondary">Agreements</Link>}
-          {can('finance.view') && <Link to="/admin/finance" className="btn-secondary">Booking values</Link>}
-          {can('calendar.manage') && <Link to="/admin/calendar-feeds" className="btn-secondary">Calendar subscriptions</Link>}
-          {can('bookings.view') && <Link to="/admin/audit" className="btn-secondary">Audit history</Link>}
-          {can('admins.manage') && <Link to="/admin/admins" className="btn-secondary">Administrators</Link>}
-          {can('settings.manage') && <Link to="/admin/settings" className="btn-secondary">Settings</Link>}
-        </nav>
-      </div>
+      <h1 className="text-3xl">Administration</h1>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="Upcoming bookings" value={data.upcoming_bookings} />
         <Metric label="Confirmed" value={data.confirmed_bookings} />
-        <Metric label="Awaiting approval" value={data.pending_approval} accent />
+        <Metric label="Awaiting approval" value={data.pending_approval} accent to={data.pending_approval > 0 ? '/admin/bookings' : undefined} />
         <Metric label="Provisional holds" value={data.provisional} />
+      </div>
+
+      <h2 className="mt-8 text-xl">What do you want to do?</h2>
+      <div className="mt-3 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {visibleMenu(can).map((g, n) => (
+          <section key={g.title} className="card" aria-labelledby={`dash-group-${n}`}>
+            <h3 id={`dash-group-${n}`} className="text-lg">{g.title}</h3>
+            <p className="text-sm text-gray-500">{g.description}</p>
+            <ul className="mt-3 space-y-2">
+              {g.items.map((i) => (
+                <li key={i.to}>
+                  <Link to={i.to} className="block rounded-lg p-2 -mx-2 hover:bg-scout-purple/10">
+                    <span className="font-bold text-scout-purple">{i.label}</span>
+                    <span className="block text-xs text-gray-600">{i.description}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
       </div>
 
       <h2 className="mt-8 text-xl">Recent activity</h2>
@@ -74,11 +76,12 @@ export default function AdminDashboard() {
   );
 }
 
-function Metric({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div className="card">
+function Metric({ label, value, accent, to }: { label: string; value: number; accent?: boolean; to?: string }) {
+  const body = (
+    <>
       <p className="label">{label}</p>
       <p className={`text-4xl font-black ${accent ? 'text-scout-red' : 'text-scout-purple'}`}>{value}</p>
-    </div>
+    </>
   );
+  return to ? <Link to={to} className="card block hover:shadow-md">{body}</Link> : <div className="card">{body}</div>;
 }
