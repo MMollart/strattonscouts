@@ -29,6 +29,7 @@ import AdminPricing from './pages/admin/Pricing';
 import AdminAdmins from './pages/admin/Admins';
 import AdminSettings from './pages/admin/Settings';
 import NotFound from './pages/NotFound';
+import ReleaseNotes from './pages/ReleaseNotes';
 import Organisations from './pages/Organisations';
 import OrganisationDetail from './pages/OrganisationDetail';
 import Invitation from './pages/Invitation';
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/release-notes" element={<ReleaseNotes />} />
 
           <Route path="/book/:slug" element={<RequireAuth><BookResource /></RequireAuth>} />
           <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
