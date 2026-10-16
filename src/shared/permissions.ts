@@ -32,6 +32,7 @@ export const PERMISSIONS = [
   'audit.export',
   'maintenance.manage',
   'agreements.manage',
+  'finance.export',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 

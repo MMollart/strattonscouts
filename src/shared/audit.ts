@@ -24,6 +24,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   agreement_acceptance: 'Agreement acceptance',
   agreement_document: 'Agreement document',
   calendar_subscription: 'Calendar subscription',
+  report: 'Report',
 };
 
 const VERB_LABELS: Record<string, string> = {
@@ -64,6 +65,7 @@ export const ACTION_AREAS = [
   ['asset.', 'Assets'],
   ['agreement.', 'Agreements'],
   ['calendar.', 'Calendar feeds'],
+  ['finance.', 'Financial reports'],
   ['settings.', 'Settings'],
   ['email_template.', 'Email templates'],
 ] as const;

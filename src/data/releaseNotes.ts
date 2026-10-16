@@ -10,7 +10,7 @@ export interface ReleaseNote {
 
 export const releaseNotes: ReleaseNote[] = [
   {
-    title: 'Release 3: audit history, maintenance and agreements',
+    title: 'Release 3: audit history, maintenance, agreements and booking values',
     date: '2026-10-16',
     summary: 'Administrators can see who changed what, plan maintenance without double-booking the hall, and ask customers to accept the hire conditions.',
     changes: [
@@ -23,6 +23,7 @@ export const releaseNotes: ReleaseNote[] = [
       'When you book, you are shown any agreements for what you are booking, such as our hire conditions, and asked to tick to accept each one and type your name. You can also draw a signature.',
       'You can see the agreements you accepted, word for word, on each booking.',
       'If you change a booking to somewhere with different terms, you are asked to accept just the new ones.',
+      'A new Booking values page shows administrators the value of confirmed, provisional, awaiting-approval and cancelled bookings for any period, by resource, price group and organisation, with a chart and a CSV download. These are booking values, not payments received.',
     ],
   },
   {

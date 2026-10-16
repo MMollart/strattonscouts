@@ -10,6 +10,7 @@ apply (`npm run db:migrate:remote`) before the code that uses it is deployed.
 | `0017_audit_events.sql` | FR11 Booking & administration audit history |
 | `0018_maintenance.sql` | FR22 Resource maintenance & fault management |
 | `0019_agreements.sql` | FR20 Booking agreements & digital acceptance |
+| `0020_financial_reporting.sql` | FR10 Financial reporting |
 
 ## FR11 – Booking & administration audit history
 
@@ -262,3 +263,59 @@ or less.
   accepted and when, but not the typed name or drawn signature.
 - *Administrator changes to a booking* do not ask for re-acceptance, because
   the customer did not make the change; a customer change request does.
+
+## FR10 – Financial reporting
+
+Admin → **Booking values** (`/admin/finance`) reports the value of bookings,
+worked out from the price snapshot stored on each booking (integer pence:
+`total_amount_pence`, `base_amount_pence`, `discount_pence`). The page and
+the CSV both say clearly that these are booking values, not payments
+received.
+
+- `GET /api/admin/finance` (`finance.view`) returns totals, count and average
+  for each status, discounts, breakdowns by resource, price group and
+  organisation, and a chart series.
+- `GET /api/admin/finance/export` (`finance.export`) returns the bookings
+  behind the report as CSV, with the same filters, and records a
+  `finance.exported` audit event.
+- Filters: this month, last month, this year, last year or a custom range
+  (up to three years), all in UK time; resource; price group; organisation
+  (or personal bookings only).
+
+### Statuses
+
+Confirmed, provisional, awaiting approval and cancelled are totalled
+separately and never added together. Rejected bookings and provisional holds
+that have expired are reported on one line underneath and are not in any
+total. Discounts and free bookings are counted for confirmed bookings only.
+
+### Which period a booking counts in
+
+By default value is counted on the **days the booking is used**. A booking
+over several UK days is shared between them in proportion to its time on
+each day, using a largest-remainder split so the parts are whole pence and
+always add up to the booking's value: a camping weekend over the end of a
+month is split between the two months, and the two reports reconcile. The
+**Count value on** filter can instead count each booking's whole value on the
+day it was made.
+
+### Permissions
+
+| | Super Admin | Booking Admin | Viewer |
+| --- | :-: | :-: | :-: |
+| View the report (`finance.view`) | ✓ | ✓ | ✓ |
+| Export CSV (`finance.export`) | ✓ | ✓ | |
+
+### Decisions
+
+- *Default attribution:* usage date, as the spec prefers; booking date is
+  available as an option.
+- *Splitting multi-day bookings:* by time used on each day, not evenly by
+  day, so an overnight booking that ends at 06:00 puts most of its value on
+  the first day.
+- *Chart:* confirmed value only, by day for periods up to 62 days and by
+  month for longer ones, with provisional and pending shown in the tooltip
+  and the table view. Charting several statuses together would invite
+  adding them up.
+- *Migration 0020* only adds two indexes and the `finance.export`
+  permission, so it is safe to run before the code deploys.
