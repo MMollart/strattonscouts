@@ -94,8 +94,15 @@ export async function transitionBooking(
     env.DB.prepare(update).bind(...binds),
     env.DB.prepare(
       `INSERT INTO booking_events (id, booking_id, event_type, actor_id, detail, created_at)
-       SELECT ?, ?, ?, ?, NULL, ? WHERE changes() = 1`,
-    ).bind(newId('bev'), args.bookingId, args.to === 'confirmed' ? (booking.status === 'provisional' ? 'confirmed' : 'approved') : args.to, args.actorId, ts),
+       SELECT ?, ?, ?, ?, ?, ? WHERE changes() = 1`,
+    ).bind(
+      newId('bev'),
+      args.bookingId,
+      args.to === 'confirmed' ? (booking.status === 'provisional' ? 'confirmed' : 'approved') : args.to,
+      args.actorId,
+      JSON.stringify({ from: { status: booking.status }, to: { status: args.to } }),
+      ts,
+    ),
     // A booking that is cancelled or rejected can no longer be changed (FR12).
     env.DB.prepare(
       `UPDATE booking_amendments SET status = 'withdrawn', decided_by = ?, decided_at = ?, updated_at = ?

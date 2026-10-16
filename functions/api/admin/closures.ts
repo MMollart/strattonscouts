@@ -3,6 +3,7 @@ import { error, json, newId, now } from '../../_lib/http';
 import { requirePermission } from '../../_lib/auth';
 import { canonicalIso } from '../../_lib/availability-sql';
 import { closureSchema } from '@shared/validation';
+import { audited } from '../../_lib/audit';
 
 // Admin: list closures (optionally filtered by resource).
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
@@ -30,18 +31,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   if (!parsed.success) return error('Validation failed', 400, parsed.error.flatten());
 
   const id = newId('cls');
-  await env.DB.prepare(
-    'INSERT INTO resource_closures (id, resource_id, starts_at, ends_at, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-  )
-    .bind(
-      id,
-      parsed.data.resource_id,
-      canonicalIso(parsed.data.starts_at),
-      canonicalIso(parsed.data.ends_at),
-      parsed.data.reason ?? null,
-      now(),
+  await audited(env, { actor: user, action: 'availability.closure_created', table: 'resource_closures', id }, () =>
+    env.DB.prepare(
+      'INSERT INTO resource_closures (id, resource_id, starts_at, ends_at, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)',
     )
-    .run();
+      .bind(
+        id,
+        parsed.data.resource_id,
+        canonicalIso(parsed.data.starts_at),
+        canonicalIso(parsed.data.ends_at),
+        parsed.data.reason ?? null,
+        now(),
+      )
+      .run());
   return json({ id }, 201);
 };
 
@@ -56,6 +58,7 @@ export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
     return error('Invalid JSON body');
   }
   if (!body.id) return error('id is required', 400);
-  await env.DB.prepare('DELETE FROM resource_closures WHERE id = ?').bind(body.id).run();
+  await audited(env, { actor: user, action: 'availability.closure_deleted', table: 'resource_closures', id: body.id }, () =>
+    env.DB.prepare('DELETE FROM resource_closures WHERE id = ?').bind(body.id).run());
   return json({ ok: true });
 };

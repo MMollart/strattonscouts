@@ -55,7 +55,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
       ),
       env.DB.prepare(
         `INSERT INTO booking_events (id, booking_id, event_type, actor_id, detail, created_at) VALUES (?, ?, 'amendment_requested', ?, ?, ?)`,
-      ).bind(newId('bev'), booking.id, user.id, JSON.stringify({ amendment_id: id }), ts),
+      ).bind(newId('bev'), booking.id, user.id, JSON.stringify({
+          amendment_id: id,
+          from: { resource_id: booking.resource_id, starts_at: booking.starts_at, ends_at: booking.ends_at, total_amount_pence: booking.total_amount_pence },
+          to: { resource_id: planned.resourceId, starts_at: planned.startsAt, ends_at: planned.endsAt, total_amount_pence: planned.price.total_pence },
+          note: input.note ?? null,
+        }), ts),
     ]);
   } catch (e) {
     if (String(e).includes('UNIQUE')) return error('This booking already has a change request waiting for approval', 409, { code: 'pending_exists' });

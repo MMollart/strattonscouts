@@ -1,5 +1,5 @@
 import type { Env } from '../../../../_lib/http';
-import { error, json, now } from '../../../../_lib/http';
+import { error, json, newId, now } from '../../../../_lib/http';
 import { getAuthUser } from '../../../../_lib/auth';
 import { bookingAccess } from '../../../../_lib/booking-access';
 
@@ -12,11 +12,16 @@ export const onRequestDelete: PagesFunction<Env> = async ({ env, request, params
     .first<{ user_id: string; organisation_id: string | null }>();
   if (!booking) return error('Booking not found', 404);
   if (!(await bookingAccess(env, user, booking)).canManage) return error('Not authorised', 403);
-  const res = await env.DB.prepare(
-    `UPDATE booking_amendments SET status = 'withdrawn', decided_by = ?, decided_at = ?, updated_at = ? WHERE id = ? AND booking_id = ? AND status = 'pending'`,
-  )
-    .bind(user.id, now(), now(), String(params.amendmentId), String(params.id))
-    .run();
+  const ts = now();
+  const [res] = await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE booking_amendments SET status = 'withdrawn', decided_by = ?, decided_at = ?, updated_at = ? WHERE id = ? AND booking_id = ? AND status = 'pending'`,
+    ).bind(user.id, ts, ts, String(params.amendmentId), String(params.id)),
+    env.DB.prepare(
+      `INSERT INTO booking_events (id, booking_id, event_type, actor_id, detail, created_at)
+       SELECT ?, ?, 'amendment_withdrawn', ?, ?, ? WHERE changes() = 1`,
+    ).bind(newId('bev'), String(params.id), user.id, JSON.stringify({ amendment_id: String(params.amendmentId) }), ts),
+  ]);
   if (res.meta.changes !== 1) return error('There is no pending request to withdraw', 409);
   return json({ ok: true });
 };

@@ -5,6 +5,7 @@ import { abortIf, guardedBatch } from './txn';
 import { getIntSetting, getSetting } from './settings';
 import { sendEmail } from './email';
 import type { OrganisationRole } from '@shared/validation';
+import { auditStatement, userActor, SYSTEM_ACTOR, type AuditActor } from './audit';
 
 /** The user's role in an organisation, or null if they are not a member. */
 export async function getMembershipRole(env: Env, organisationId: string, userId: string): Promise<OrganisationRole | null> {
@@ -25,7 +26,7 @@ export type MembershipChangeResult = { ok: true } | { ok: false; code: 'not_memb
  */
 export async function changeMembership(
   env: Env,
-  args: { organisationId: string; userId: string; role: OrganisationRole | null },
+  args: { organisationId: string; userId: string; role: OrganisationRole | null; actor?: AuditActor },
 ): Promise<MembershipChangeResult> {
   const current = await getMembershipRole(env, args.organisationId, args.userId);
   if (!current) return { ok: false, code: 'not_member' };
@@ -44,6 +45,19 @@ export async function changeMembership(
           args.userId,
         )
       : env.DB.prepare('DELETE FROM organisation_memberships WHERE organisation_id = ? AND user_id = ?').bind(args.organisationId, args.userId),
+    auditStatement(
+      env,
+      {
+        actor: args.actor ?? SYSTEM_ACTOR,
+        action: args.role ? 'organisation.member_role_changed' : 'organisation.member_removed',
+        entityType: 'organisation_membership',
+        entityId: `${args.organisationId}:${args.userId}`,
+        before: { user_id: args.userId, role: current },
+        after: args.role ? { user_id: args.userId, role: args.role } : null,
+        organisationId: args.organisationId,
+      },
+      { onlyIfChanged: true },
+    ),
   );
   const result = await guardedBatch(env, statements);
   return result ? { ok: true } : { ok: false, code: 'last_manager' };
@@ -60,7 +74,7 @@ export type InviteResult =
  */
 export async function inviteToOrganisation(
   env: Env,
-  args: { organisationId: string; email: string; role: OrganisationRole; invitedBy: { id: string; full_name: string } },
+  args: { organisationId: string; email: string; role: OrganisationRole; invitedBy: { id: string; full_name: string; roles?: readonly string[] } },
 ): Promise<InviteResult> {
   const email = args.email.toLowerCase();
   const ts = now();
@@ -82,12 +96,20 @@ export async function inviteToOrganisation(
   const token = randomToken(32);
   const id = newId('inv');
   try {
-    await env.DB.prepare(
-      `INSERT INTO organisation_invitations (id, organisation_id, email, role, token_hash, status, invited_by, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
-    )
-      .bind(id, args.organisationId, email, args.role, await sha256Hex(token), args.invitedBy.id, ts, expiresAt)
-      .run();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO organisation_invitations (id, organisation_id, email, role, token_hash, status, invited_by, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      ).bind(id, args.organisationId, email, args.role, await sha256Hex(token), args.invitedBy.id, ts, expiresAt),
+      auditStatement(env, {
+        actor: userActor(args.invitedBy),
+        action: 'organisation.member_invited',
+        entityType: 'organisation_invitation',
+        entityId: id,
+        after: { role: args.role, expires_at: expiresAt },
+        organisationId: args.organisationId,
+      }),
+    ]);
   } catch (e) {
     if (String(e).includes('UNIQUE')) return { ok: false, code: 'already_invited' };
     throw e;
@@ -146,7 +168,7 @@ export type RespondResult =
  */
 export async function respondToInvitation(
   env: Env,
-  args: { token: string; user: { id: string; email: string }; action: 'accept' | 'decline' },
+  args: { token: string; user: { id: string; email: string; roles?: readonly string[] }; action: 'accept' | 'decline' },
 ): Promise<RespondResult> {
   const inv = await findInvitation(env, args.token);
   if (!inv) return { ok: false, code: 'not_found' };
@@ -160,6 +182,18 @@ export async function respondToInvitation(
       `UPDATE organisation_invitations SET status = ?, responded_at = ?, responded_by = ?
        WHERE id = ? AND status = 'pending' AND expires_at > ?`,
     ).bind(status, ts, args.user.id, inv.id, ts),
+    auditStatement(
+      env,
+      {
+        actor: userActor(args.user),
+        action: args.action === 'accept' ? 'organisation.member_joined' : 'organisation.invitation_declined',
+        entityType: 'organisation_invitation',
+        entityId: inv.id,
+        after: { status, role: inv.role },
+        organisationId: inv.organisation_id,
+      },
+      { onlyIfChanged: true },
+    ),
   ];
   if (args.action === 'accept') {
     statements.push(

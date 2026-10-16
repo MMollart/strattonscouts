@@ -6,6 +6,7 @@ import { parseBody } from '../../_lib/request';
 import { getMembershipRole } from '../../_lib/organisations';
 import { loadOrganisation } from '../../_lib/org-views';
 import { organisationSchema } from '@shared/validation';
+import { audited } from '../../_lib/audit';
 
 // Organisation details for its members (and administrators).
 export const onRequestGet: PagesFunction<Env> = async ({ env, request, params }) => {
@@ -34,11 +35,12 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request, params })
   if (!type.results.length) return error('Invalid organisation type', 400);
   if (!cat.results.length) return error('Invalid pricing category', 400);
   const phone = await encryptAtRest(input.contact_phone, env.DATA_ENCRYPTION_KEY ?? '');
-  await env.DB.prepare(
-    `UPDATE organisations SET name = ?, organisation_type_id = ?, pricing_category_id = ?, contact_email = ?, contact_phone_encrypted = ?, updated_at = ?
-     WHERE id = ?`,
-  )
-    .bind(input.name, input.organisation_type_id, input.pricing_category_id, input.contact_email.toLowerCase(), phone, now(), id)
-    .run();
+  await audited(env, { actor: user, action: 'organisation.updated', table: 'organisations', id }, () =>
+    env.DB.prepare(
+      `UPDATE organisations SET name = ?, organisation_type_id = ?, pricing_category_id = ?, contact_email = ?, contact_phone_encrypted = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+      .bind(input.name, input.organisation_type_id, input.pricing_category_id, input.contact_email.toLowerCase(), phone, now(), id)
+      .run());
   return json({ ok: true });
 };

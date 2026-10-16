@@ -7,15 +7,34 @@ const MIGRATIONS = Object.keys(MIGRATION_FILES)
   .sort()
   .map((k) => MIGRATION_FILES[k]);
 
-/** Split a migration file into statements (no triggers or semicolons in strings). */
+/**
+ * Split a migration file into statements (no semicolons in strings). A
+ * CREATE TRIGGER body (BEGIN ... END) stays one statement.
+ */
 function statements(sql: string): string[] {
-  return sql
+  const parts = sql
     .split('\n')
     .filter((line) => !line.trim().startsWith('--'))
     .join('\n')
     .split(';')
     .map((s) => s.trim())
     .filter(Boolean);
+  const out: string[] = [];
+  let trigger: string[] | null = null;
+  for (const part of parts) {
+    if (trigger) {
+      trigger.push(part);
+      if (/^END$/i.test(part)) {
+        out.push(trigger.join(';\n'));
+        trigger = null;
+      }
+    } else if (/^CREATE\s+TRIGGER\b/i.test(part)) {
+      trigger = [part];
+    } else {
+      out.push(part);
+    }
+  }
+  return out;
 }
 
 /**

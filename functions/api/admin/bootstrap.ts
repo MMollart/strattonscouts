@@ -1,6 +1,7 @@
 import type { Env } from '../../_lib/http';
 import { error, json, newId, now } from '../../_lib/http';
 import { hashPassword, verifyPassword, encryptAtRest } from '../../_lib/crypto';
+import { auditStatement } from '../../_lib/audit';
 
 /**
  * Secure bootstrap for the initial Super Admin. Guarded by the
@@ -62,11 +63,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
       .run();
   }
 
-  await env.DB.prepare(
-    'INSERT OR IGNORE INTO user_roles (user_id, role_id, granted_at, granted_by) VALUES (?, ?, ?, ?)',
-  )
-    .bind(userId, superRole.id, ts, userId)
-    .run();
+  await env.DB.batch([
+    env.DB.prepare('INSERT OR IGNORE INTO user_roles (user_id, role_id, granted_at, granted_by) VALUES (?, ?, ?, ?)').bind(userId, superRole.id, ts, userId),
+    auditStatement(
+      env,
+      { actor: { id: userId, type: 'administrator' }, action: 'admin.bootstrapped', entityType: 'user', entityId: userId, after: { role: 'super_admin' } },
+      { onlyIfChanged: true },
+    ),
+  ]);
 
   return json({ ok: true, user_id: userId }, 201);
 };

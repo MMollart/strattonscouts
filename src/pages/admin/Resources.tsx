@@ -9,6 +9,7 @@ import { BookingWindowFields, type BookingWindow, windowToIso } from '../../comp
 import { formatLondon, londonToday } from '@shared/londonTime';
 import { describeRule, parseDays } from '@shared/availability-rules';
 import { ancestorIds, isWithin, parentOptions, wouldCreateLoop } from '@shared/hierarchy';
+import { HistoryPanel } from '../../components/HistoryPanel';
 
 interface ResourceRow {
   id: string;
@@ -97,6 +98,8 @@ export default function AdminResources() {
       <RulesPanel resources={rows} />
 
       <ClosuresPanel resources={rows} />
+
+      <ResourceHistory resources={rows} />
 
       {limits && (
         <LimitsEditor
@@ -648,5 +651,23 @@ function RulesPanel({ resources }: { resources: ResourceRow[] }) {
         ))}
       </div>
     </section>
+  );
+}
+
+/** Changes to one resource and everything recorded against it (prices, rules, closures, maintenance). */
+function ResourceHistory({ resources }: { resources: ResourceRow[] }) {
+  const [resourceId, setResourceId] = useState(resources[0]?.id ?? '');
+  return (
+    <div>
+      <div className="mt-8 flex flex-wrap items-end gap-3">
+        <div>
+          <label className="label" htmlFor="rh-resource">Change history for</label>
+          <select id="rh-resource" className="input" value={resourceId} onChange={(e) => setResourceId(e.target.value)}>
+            {resources.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </div>
+      </div>
+      {resourceId && <HistoryPanel key={resourceId} filters={{ resource_id: resourceId }} title={`${resources.find((r) => r.id === resourceId)?.name ?? 'Resource'} history`} />}
+    </div>
   );
 }

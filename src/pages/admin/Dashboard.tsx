@@ -40,6 +40,7 @@ export default function AdminDashboard() {
           <Link to="/admin/organisations" className="btn-secondary">Organisations</Link>
           <Link to="/admin/emails" className="btn-secondary">Emails</Link>
           {can('assets.manage') && <Link to="/admin/assets" className="btn-secondary">Assets</Link>}
+          {can('bookings.view') && <Link to="/admin/audit" className="btn-secondary">Audit history</Link>}
           {can('admins.manage') && <Link to="/admin/admins" className="btn-secondary">Administrators</Link>}
           {can('settings.manage') && <Link to="/admin/settings" className="btn-secondary">Settings</Link>}
         </nav>

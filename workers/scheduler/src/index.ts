@@ -1,6 +1,7 @@
 import type { Env } from '../../../functions/_lib/http';
 import { expireProvisionalBookings } from '../../../functions/_lib/provisional';
 import { retryFailedEmails } from '../../../functions/_lib/email';
+import { sealAuditEvents } from '../../../functions/_lib/audit';
 
 /**
  * Scheduled Worker for Release 2 background jobs. Cloudflare Pages Functions
@@ -19,6 +20,9 @@ export default {
         // FR06: retry emails that failed for a temporary reason.
         const retried = await retryFailedEmails(env);
         if (retried) console.log(`[scheduler] re-sent ${retried} email(s)`);
+        // FR11: chain new audit events into the tamper-evident hash chain.
+        const sealed = await sealAuditEvents(env);
+        if (sealed) console.log(`[scheduler] sealed ${sealed} audit event(s)`);
       })(),
     );
   },

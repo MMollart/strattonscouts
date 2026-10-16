@@ -4,6 +4,7 @@ import { requirePermission } from '../../../../_lib/auth';
 import { parseBody } from '../../../../_lib/request';
 import { exists, isoOrNull } from '../../../../_lib/crud';
 import { pricingRateSchema } from '@shared/validation';
+import { audited } from '../../../../_lib/audit';
 
 // Admin: list base prices, optionally for one resource. Each price group's
 // price is derived from these by taking off the group's discount.
@@ -31,16 +32,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   if (!(await exists(env, 'resources', input.resource_id))) return error('Resource not found', 400);
   const id = newId('rate');
   const ts = now();
-  await env.DB.prepare(
-    `INSERT INTO base_rates (id, resource_id, pricing_model, amount_pence, effective_from, effective_to, is_active, created_at, updated_at, updated_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      id, input.resource_id, input.pricing_model,
-      input.pricing_model === 'free' ? 0 : input.amount_pence,
-      new Date(input.effective_from).toISOString(), isoOrNull(input.effective_to),
-      input.is_active ? 1 : 0, ts, ts, user.id,
+  await audited(env, { actor: user, action: 'pricing.rate_created', table: 'base_rates', id }, () =>
+    env.DB.prepare(
+      `INSERT INTO base_rates (id, resource_id, pricing_model, amount_pence, effective_from, effective_to, is_active, created_at, updated_at, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run();
+      .bind(
+        id, input.resource_id, input.pricing_model,
+        input.pricing_model === 'free' ? 0 : input.amount_pence,
+        new Date(input.effective_from).toISOString(), isoOrNull(input.effective_to),
+        input.is_active ? 1 : 0, ts, ts, user.id,
+      )
+      .run());
   return json({ id }, 201);
 };

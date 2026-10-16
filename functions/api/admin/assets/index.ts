@@ -5,6 +5,7 @@ import { parseBody } from '../../../_lib/request';
 import { ASSET_SELECT, isUniqueViolation } from '../../../_lib/assets';
 import { assetSchema } from '@shared/validation';
 import { ASSET_STATUSES } from '@shared/assets';
+import { audited } from '../../../_lib/audit';
 
 // Admin: the asset register. Filters: status, type_id, user_id (current
 // holder) and q (name, reference or holder).
@@ -54,12 +55,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   const id = newId('asset');
   const ts = now();
   try {
-    await env.DB.prepare(
-      `INSERT INTO assets (id, asset_type_id, name, description, reference, status, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'available', ?, ?, ?)`,
-    )
-      .bind(id, input.asset_type_id, input.name, input.description, input.reference, user.id, ts, ts)
-      .run();
+    await audited(env, { actor: user, action: 'asset.created', table: 'assets', id }, () =>
+    env.DB.prepare(
+        `INSERT INTO assets (id, asset_type_id, name, description, reference, status, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'available', ?, ?, ?)`,
+      )
+        .bind(id, input.asset_type_id, input.name, input.description, input.reference, user.id, ts, ts)
+        .run());
   } catch (e) {
     if (isUniqueViolation(e)) return error('Another asset already has this serial or reference number', 409);
     throw e;

@@ -21,6 +21,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request, params })
   if (Date.parse(expiresAt) <= Date.now()) return error('The new expiry must be in the future', 400);
 
   const ts = now();
+  const before = await env.DB.prepare('SELECT expires_at FROM bookings WHERE id = ?').bind(id).first<{ expires_at: string | null }>();
   const [updated] = await env.DB.batch([
     env.DB.prepare(
       `UPDATE bookings SET expires_at = ?, updated_at = ?
@@ -29,7 +30,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request, params })
     env.DB.prepare(
       `INSERT INTO booking_events (id, booking_id, event_type, actor_id, detail, created_at)
        SELECT ?, ?, 'expiry_changed', ?, ?, ? WHERE changes() = 1`,
-    ).bind(newId('bev'), id, user.id, JSON.stringify({ expires_at: expiresAt }), ts),
+    ).bind(newId('bev'), id, user.id, JSON.stringify({ from: { expires_at: before?.expires_at ?? null }, to: { expires_at: expiresAt } }), ts),
   ]);
   if (updated.meta.changes !== 1) {
     const b = await env.DB.prepare(`SELECT status, starts_at, expires_at > ${NOW_SQL} AS live FROM bookings WHERE id = ?`)
