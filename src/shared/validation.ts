@@ -313,17 +313,17 @@ export const amendmentDecisionSchema = z.object({
 });
 
 // FR06 email templates
-export const emailTemplateSchema = z.object({
-  subject: z.string().trim().min(1).max(200),
-  body_text: z.string().trim().min(1).max(20_000),
-  body_html: z.string().trim().max(50_000).nullable().optional(),
-  is_enabled: z.boolean().default(true),
-});
-
 export const emailTestSchema = z.object({
   subject: z.string().trim().min(1).max(200),
-  body_text: z.string().trim().min(1).max(20_000),
-  body_html: z.string().trim().max(50_000).nullable().optional(),
+  title: z.string().trim().min(1).max(200),
+  body: z.string().trim().min(1).max(10_000),
+  detail_card: z.string().trim().max(2_000).default(''),
+  thanks: z.string().trim().max(500).default(''),
+  footer: z.string().trim().max(1_000).default(''),
+});
+
+export const emailTemplateSchema = emailTestSchema.extend({
+  is_enabled: z.boolean().default(true),
 });
 
 // FR07: physical assets.

@@ -13,8 +13,11 @@ interface Template {
   required: boolean;
   customised: boolean;
   subject: string;
-  body_text: string;
-  body_html: string | null;
+  title: string;
+  body: string;
+  detail_card: string;
+  thanks: string;
+  footer: string;
   is_enabled: boolean;
   updated_at: string | null;
   parameters: { name: string; description: string }[];
@@ -87,17 +90,28 @@ function Templates() {
   );
 }
 
+type SectionKey = 'title' | 'body' | 'detail_card' | 'thanks' | 'footer';
+
+const SECTIONS: { key: SectionKey; label: string; help: string; rows?: number }[] = [
+  { key: 'title', label: 'Title', help: 'The big purple headline.' },
+  { key: 'body', label: 'Body', rows: 8, help: 'Leave a blank line between paragraphs. A paragraph that is just [Button text](link) becomes a button.' },
+  { key: 'detail_card', label: 'Detail card', rows: 5, help: 'The pink panel. One "Label: value" per line; rows whose value is empty are left out. Leave blank for no card.' },
+  { key: 'thanks', label: 'Thanks', rows: 2, help: 'The sign-off. Its last line is bold.' },
+  { key: 'footer', label: 'Footer', rows: 2, help: 'The teal footer. Lines starting with # are bold.' },
+];
+
 function TemplateEditor({ template, onClose, onSaved }: { template: Template; onClose: () => void; onSaved: () => Promise<void> }) {
   const [subject, setSubject] = useState(template.subject);
-  const [bodyText, setBodyText] = useState(template.body_text);
-  const [bodyHtml, setBodyHtml] = useState(template.body_html ?? '');
+  const [sections, setSections] = useState<Record<SectionKey, string>>(() => ({
+    title: template.title, body: template.body, detail_card: template.detail_card, thanks: template.thanks, footer: template.footer,
+  }));
   const [enabled, setEnabled] = useState(template.is_enabled);
   const [preview, setPreview] = useState<{ subject: string; text: string; html: string; unknown: string[] } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
   const focused = useRef<{ el: HTMLInputElement | HTMLTextAreaElement; set: (v: string) => void } | null>(null);
-  const content = { subject, body_text: bodyText, body_html: bodyHtml.trim() || null };
+  const content = { subject, ...sections };
 
   // Live preview, debounced.
   useEffect(() => {
@@ -106,12 +120,12 @@ function TemplateEditor({ template, onClose, onSaved }: { template: Template; on
     }, 400);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subject, bodyText, bodyHtml]);
+  }, [subject, sections]);
 
   function insert(param: string) {
     const target = focused.current;
     const token = `{{ ${param} }}`;
-    if (!target) return setBodyText(`${bodyText}${token}`);
+    if (!target) return setSections((s) => ({ ...s, body: `${s.body}${token}` }));
     const { el, set } = target;
     const start = el.selectionStart ?? el.value.length;
     const end = el.selectionEnd ?? start;
@@ -154,14 +168,20 @@ function TemplateEditor({ template, onClose, onSaved }: { template: Template; on
             <label className="label" htmlFor="tpl-subject">Subject</label>
             <input id="tpl-subject" className="input" maxLength={200} value={subject} onChange={(e) => setSubject(e.target.value)} onFocus={track(setSubject)} />
           </div>
-          <div>
-            <label className="label" htmlFor="tpl-text">Plain-text body</label>
-            <textarea id="tpl-text" className="input font-mono text-sm" rows={10} value={bodyText} onChange={(e) => setBodyText(e.target.value)} onFocus={track(setBodyText)} />
-          </div>
-          <div>
-            <label className="label" htmlFor="tpl-html">HTML body (what most people see; blank sends the plain text in the branded layout)</label>
-            <textarea id="tpl-html" className="input font-mono text-sm" rows={5} value={bodyHtml} onChange={(e) => setBodyHtml(e.target.value)} onFocus={track(setBodyHtml)} />
-          </div>
+          <p className="text-xs text-gray-500">
+            Every email is built in the Scouts layout from these sections, in this order: title, body, detail card, thanks and footer.
+          </p>
+          {SECTIONS.map((f) => {
+            const set = (v: string) => setSections((s) => ({ ...s, [f.key]: v }));
+            const props = { id: `tpl-${f.key}`, className: 'input', value: sections[f.key], onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set(e.target.value), onFocus: track(set) };
+            return (
+              <div key={f.key}>
+                <label className="label" htmlFor={`tpl-${f.key}`}>{f.label}</label>
+                {f.rows ? <textarea {...props} rows={f.rows} /> : <input {...props} maxLength={200} />}
+                <p className="mt-1 text-xs text-gray-500">{f.help}</p>
+              </div>
+            );
+          })}
           <div>
             <p className="label">Insert a parameter</p>
             <div className="flex flex-wrap gap-1">

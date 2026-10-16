@@ -1,20 +1,31 @@
 import type { Env } from './http';
 import { newId, now } from './http';
 import { getSetting } from './settings';
-import { renderEmail, templateDefinition, type EmailTemplateKey, type RenderedEmail } from '@shared/email-templates';
+import { renderEmail, templateDefinition, type EmailContent, type EmailTemplateKey, type RenderedEmail, type TemplateDefinition } from '@shared/email-templates';
 
 export type EmailTemplate = EmailTemplateKey;
 
-/** A template's current content: the administrator's version if saved, otherwise the default. */
-export async function loadTemplate(env: Env, key: EmailTemplateKey): Promise<{ subject: string; body_text: string; body_html: string | null; is_enabled: boolean }> {
+type LoadedTemplate = EmailContent & { badge?: TemplateDefinition['badge']; is_enabled: boolean };
+
+/**
+ * A template's current content: the administrator's version if saved,
+ * otherwise the default. Rows saved before emails had sections (no title)
+ * use the default content.
+ */
+export async function loadTemplate(env: Env, key: EmailTemplateKey): Promise<LoadedTemplate> {
   const def = templateDefinition(key);
-  const row = await env.DB.prepare('SELECT subject, body_text, body_html, is_enabled FROM email_templates WHERE key = ?')
+  const row = await env.DB.prepare('SELECT subject, title, body, detail_card, thanks, footer, is_enabled FROM email_templates WHERE key = ?')
     .bind(key)
-    .first<{ subject: string; body_text: string; body_html: string | null; is_enabled: number }>();
+    .first<EmailContent & { title: string | null; is_enabled: number }>();
+  const saved = row?.title != null ? row : null;
   return {
-    subject: row?.subject ?? def?.subject ?? '',
-    body_text: row?.body_text ?? def?.body_text ?? '',
-    body_html: row ? row.body_html : def?.body_html ?? null,
+    subject: saved?.subject ?? def?.subject ?? '',
+    title: saved?.title ?? def?.title ?? '',
+    body: saved?.body ?? def?.body ?? '',
+    detail_card: saved ? saved.detail_card ?? '' : def?.detail_card ?? '',
+    thanks: saved ? saved.thanks ?? '' : def?.thanks ?? '',
+    footer: saved ? saved.footer ?? '' : def?.footer ?? '',
+    badge: def?.badge,
     // Required templates are always sent.
     is_enabled: def?.required ? true : row ? !!row.is_enabled : true,
   };
@@ -227,13 +238,13 @@ export async function sendEmail(
     bookingId?: string;
     dedupeKey?: string;
     /** Use this content instead of the saved template (test emails). */
-    content?: { subject: string; body_text: string; body_html?: string | null };
+    content?: EmailContent;
   },
 ): Promise<{ status: 'sent' | 'failed' | 'disabled' | 'duplicate' }> {
   const eventId = newId('eml');
   const dedupeKey = args.dedupeKey ?? eventId;
   const def = templateDefinition(args.template);
-  const template = args.content ? { ...args.content, is_enabled: true } : await loadTemplate(env, args.template);
+  const template: LoadedTemplate = args.content ? { ...args.content, badge: def?.badge, is_enabled: true } : await loadTemplate(env, args.template);
   const params = { ...(await commonParams(env, args.to)), ...args.params };
   const reference = params.booking_reference || null;
   const status = template.is_enabled ? 'sending' : 'disabled';
@@ -269,7 +280,7 @@ async function attemptSend(
   attempt: number,
   to: string,
   key: EmailTemplate,
-  template: { subject: string; body_text: string; body_html?: string | null },
+  template: LoadedTemplate,
   params: Record<string, string>,
 ): Promise<DeliveryResult> {
   const email = renderEmail(template, params);

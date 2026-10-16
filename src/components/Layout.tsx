@@ -1,10 +1,13 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useState } from 'react';
+import { useApi } from '../lib/useApi';
 
 export function Header() {
   const { user, isAdmin, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const { data: site } = useApi<{ venue_name: string; logo_url: string }>('/site');
+  const [logoFailed, setLogoFailed] = useState(false);
 
   const nav = (
     <>
@@ -36,7 +39,11 @@ export function Header() {
     <header className="bg-scout-purple text-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
         <Link to="/" className="flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-scout-purple font-black">SS</span>
+          {site?.logo_url && !logoFailed ? (
+            <img src={site.logo_url} alt="" className="h-10 w-auto max-w-[10rem] object-contain" onError={() => setLogoFailed(true)} />
+          ) : (
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-scout-purple font-black">SS</span>
+          )}
           <span className="text-lg font-extrabold leading-tight">Stratton Scouts<br /><span className="text-xs font-semibold opacity-80">Resource Booking</span></span>
         </Link>
         <nav className="hidden items-center gap-5 md:flex">{nav}</nav>
