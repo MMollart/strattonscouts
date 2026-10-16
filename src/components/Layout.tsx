@@ -40,7 +40,7 @@ export function Header() {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
         <Link to="/" className="flex items-center gap-3">
           {site?.logo_url && !logoFailed ? (
-            <img src={site.logo_url} alt="" className="h-10 w-auto max-w-[10rem] object-contain" onError={() => setLogoFailed(true)} />
+            <img src={site.logo_url} alt="" className="h-14 w-auto max-w-[14rem] object-contain md:h-20 md:max-w-[18rem]" onError={() => setLogoFailed(true)} />
           ) : (
             <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-scout-purple font-black">SS</span>
           )}
