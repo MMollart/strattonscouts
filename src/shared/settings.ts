@@ -31,7 +31,7 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   { key: 'contact_email', label: 'Contact email', type: 'email', default: 'bookings@strattonscouts.example', help: 'Shown to customers in emails as {{ contact_email }}.' },
   {
     key: 'email_logo_url', label: 'Email logo URL', type: 'url', default: '', optional: true,
-    help: 'Public https address of the logo shown at the top of every email (for example on R2). Leave blank for no logo.',
+    help: 'Public https address of the logo shown at the top of every email and in the site header (for example on R2). Leave blank to show the initials in the header and no logo in emails.',
   },
 ];
 

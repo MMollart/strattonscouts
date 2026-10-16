@@ -10,6 +10,7 @@ import * as pricing from '../functions/api/admin/pricing/rates/index';
 import * as admins from '../functions/api/admin/admins';
 import * as adminRole from '../functions/api/admin/admins/[id]';
 import * as settings from '../functions/api/admin/settings';
+import * as site from '../functions/api/site';
 import * as closures from '../functions/api/admin/closures';
 
 let env: Env;
@@ -118,5 +119,7 @@ describe('administrator management (FR08)', () => {
     expect((await call(settings.onRequestPut, { env, cookie, method: 'PUT', body: { values: { email_logo_url: 'http://x.example/logo.png' } } })).status).toBe(400);
     expect((await call(settings.onRequestPut, { env, cookie, method: 'PUT', body: { values: { email_logo_url: '' } } })).status).toBe(200);
     expect((await call(settings.onRequestPut, { env, cookie, method: 'PUT', body: { values: { email_logo_url: 'https://cdn.example/logo.png' } } })).status).toBe(200);
+    // The site header uses the same logo, and anyone can read it.
+    expect((await call(site.onRequestGet, { env })).body).toEqual({ venue_name: '1st Stratton Scouts', logo_url: 'https://cdn.example/logo.png' });
   });
 });
