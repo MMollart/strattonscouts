@@ -114,7 +114,7 @@ ${rows}
 
 function logoRow(o: LayoutOptions): string {
   if (o.logoUrl) {
-    return `<tr><td align="center" style="padding:0 0 24px 0;"><img src="${o.logoUrl}" alt="${o.venueName}" height="64" style="display:block;height:64px;width:auto;max-width:280px;border:0;"></td></tr>`;
+    return `<tr><td align="center" style="padding:0 0 24px 0;"><img src="${o.logoUrl}" alt="${o.venueName}" height="96" style="display:block;height:96px;width:auto;max-width:420px;border:0;"></td></tr>`;
   }
   if (!o.showLogoPlaceholder) return '';
   return `<tr><td align="center" style="padding:0 0 24px 0;"><div style="display:inline-block;border:2px dashed #ffffff;border-radius:8px;padding:18px 32px;font-family:${FONT};font-weight:700;font-size:14px;line-height:20px;color:#ffffff;">Logo goes here (Admin → Settings → Email logo URL)</div></td></tr>`;
