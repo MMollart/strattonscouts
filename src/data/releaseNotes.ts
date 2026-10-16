@@ -10,6 +10,19 @@ export interface ReleaseNote {
 
 export const releaseNotes: ReleaseNote[] = [
   {
+    title: 'Release 3: audit history and maintenance',
+    date: '2026-10-16',
+    summary: 'Administrators can see who changed what, and plan maintenance without double-booking the hall.',
+    changes: [
+      'A full history of every booking and every change administrators make, with who made it, when, what changed and why.',
+      'History is shown on each booking, organisation and resource, and can be searched and exported.',
+      'Administrators can schedule maintenance on any resource. The resource can’t be booked while the work is on, and nor can anything it is part of.',
+      'Existing bookings are never cancelled by maintenance. They are listed so an administrator can contact the group, and customers can be emailed a maintenance notice.',
+      'Faults can be reported with a severity. Serious ones stop the resource being booked until they are fixed.',
+      'Maintenance appears on the administrators’ calendar in orange stripes.',
+    ],
+  },
+  {
     title: 'Logo and branded emails',
     date: '2026-10-16',
     summary: 'The site and every email now look like Stratton Scouts.',
