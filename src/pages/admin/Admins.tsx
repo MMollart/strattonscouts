@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
@@ -52,10 +51,7 @@ export default function AdminAdmins() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Administrators</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
-      </div>
+      <h1 className="text-3xl">Administrators</h1>
 
       <div className="card mt-6 grid gap-2 text-sm sm:grid-cols-3">
         {ADMIN_ROLES.map((r) => (

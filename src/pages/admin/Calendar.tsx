@@ -141,10 +141,7 @@ export default function AdminCalendar() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-3xl">Calendar</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
-      </div>
+      <h1 className="text-3xl">Calendar</h1>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <div role="group" aria-label="View" className="flex overflow-hidden rounded-xl border">

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
@@ -105,12 +104,7 @@ export default function AdminFinance() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Booking values</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">
-          ← Dashboard
-        </Link>
-      </div>
+      <h1 className="text-3xl">Booking values</h1>
       <p className="mt-2 rounded-lg bg-scout-yellow/20 px-4 py-2 text-sm text-yellow-900">
         These are the values of bookings, worked out from the price fixed on each booking. They are <strong>not payments received</strong>.
       </p>

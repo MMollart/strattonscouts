@@ -115,10 +115,7 @@ export default function AdminBookings() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Bookings</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
-      </div>
+      <h1 className="text-3xl">Bookings</h1>
 
       {!can('bookings.create') ? null : creating ? (
         <BookForCustomer

@@ -25,7 +25,7 @@ import AdminDashboard from './pages/admin/Dashboard';
 import AdminResources from './pages/admin/Resources';
 import AdminBookings from './pages/admin/Bookings';
 import AdminUsers from './pages/admin/Users';
-import AdminPricing from './pages/admin/Pricing';
+import AdminPricing, { AdminDiscounts, AdminOrganisationPricing, AdminPricingCategories } from './pages/admin/Pricing';
 import AdminAdmins from './pages/admin/Admins';
 import AdminSettings from './pages/admin/Settings';
 import NotFound from './pages/NotFound';
@@ -39,6 +39,8 @@ import AdminMaintenance from './pages/admin/Maintenance';
 import AdminAgreements from './pages/admin/Agreements';
 import AdminFinance from './pages/admin/Finance';
 import AdminCalendarFeeds from './pages/admin/CalendarFeeds';
+import { AdminAvailabilityRules, AdminClosures, AdminBookingLimits } from './pages/admin/Availability';
+import AdminLayout from './components/AdminLayout';
 
 function RequireAuth({ children, admin, permission }: { children: ReactNode; admin?: boolean; permission?: Permission }) {
   const { user, loading, isAdmin, can } = useAuth();
@@ -77,21 +79,29 @@ export default function App() {
           <Route path="/invitations/:token" element={<Invitation />} />
 
           <Route path="/admin" element={<RequireAuth admin><AdminDashboard /></RequireAuth>} />
-          <Route path="/admin/resources" element={<RequireAuth admin><AdminResources /></RequireAuth>} />
-          <Route path="/admin/bookings" element={<RequireAuth admin><AdminBookings /></RequireAuth>} />
-          <Route path="/admin/organisations" element={<RequireAuth admin><AdminOrganisations /></RequireAuth>} />
-          <Route path="/admin/users" element={<RequireAuth admin><AdminUsers /></RequireAuth>} />
-          <Route path="/admin/pricing" element={<RequireAuth admin><AdminPricing /></RequireAuth>} />
-          <Route path="/admin/admins" element={<RequireAuth admin permission="admins.manage"><AdminAdmins /></RequireAuth>} />
-          <Route path="/admin/calendar" element={<RequireAuth admin><AdminCalendar /></RequireAuth>} />
-          <Route path="/admin/assets" element={<RequireAuth admin permission="assets.manage"><AdminAssets /></RequireAuth>} />
-          <Route path="/admin/emails" element={<RequireAuth admin><AdminEmails /></RequireAuth>} />
-          <Route path="/admin/audit" element={<RequireAuth admin permission="bookings.view"><AdminAudit /></RequireAuth>} />
-          <Route path="/admin/maintenance" element={<RequireAuth admin permission="bookings.view"><AdminMaintenance /></RequireAuth>} />
-          <Route path="/admin/agreements" element={<RequireAuth admin permission="bookings.view"><AdminAgreements /></RequireAuth>} />
-          <Route path="/admin/finance" element={<RequireAuth admin permission="finance.view"><AdminFinance /></RequireAuth>} />
-          <Route path="/admin/calendar-feeds" element={<RequireAuth admin permission="calendar.manage"><AdminCalendarFeeds /></RequireAuth>} />
-          <Route path="/admin/settings" element={<RequireAuth admin permission="settings.manage"><AdminSettings /></RequireAuth>} />
+          <Route element={<RequireAuth admin><AdminLayout /></RequireAuth>}>
+            <Route path="/admin/resources" element={<AdminResources />} />
+            <Route path="/admin/availability" element={<AdminAvailabilityRules />} />
+            <Route path="/admin/availability/closures" element={<AdminClosures />} />
+            <Route path="/admin/availability/limits" element={<AdminBookingLimits />} />
+            <Route path="/admin/bookings" element={<AdminBookings />} />
+            <Route path="/admin/organisations" element={<AdminOrganisations />} />
+            <Route path="/admin/users" element={<AdminUsers />} />
+            <Route path="/admin/pricing" element={<AdminPricing />} />
+            <Route path="/admin/pricing/discounts" element={<AdminDiscounts />} />
+            <Route path="/admin/pricing/organisations" element={<AdminOrganisationPricing />} />
+            <Route path="/admin/pricing/categories" element={<AdminPricingCategories />} />
+            <Route path="/admin/admins" element={<RequireAuth admin permission="admins.manage"><AdminAdmins /></RequireAuth>} />
+            <Route path="/admin/calendar" element={<AdminCalendar />} />
+            <Route path="/admin/assets" element={<RequireAuth admin permission="assets.manage"><AdminAssets /></RequireAuth>} />
+            <Route path="/admin/emails" element={<AdminEmails />} />
+            <Route path="/admin/audit" element={<RequireAuth admin permission="bookings.view"><AdminAudit /></RequireAuth>} />
+            <Route path="/admin/maintenance" element={<RequireAuth admin permission="bookings.view"><AdminMaintenance /></RequireAuth>} />
+            <Route path="/admin/agreements" element={<RequireAuth admin permission="bookings.view"><AdminAgreements /></RequireAuth>} />
+            <Route path="/admin/finance" element={<RequireAuth admin permission="finance.view"><AdminFinance /></RequireAuth>} />
+            <Route path="/admin/calendar-feeds" element={<RequireAuth admin permission="calendar.manage"><AdminCalendarFeeds /></RequireAuth>} />
+            <Route path="/admin/settings" element={<RequireAuth admin permission="settings.manage"><AdminSettings /></RequireAuth>} />
+          </Route>
 
           <Route path="*" element={<NotFound />} />
         </Routes>

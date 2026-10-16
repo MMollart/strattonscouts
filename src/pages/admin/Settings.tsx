@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { Spinner, ErrorState } from '../../components/ui';
@@ -36,10 +35,7 @@ export default function AdminSettings() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Settings</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
-      </div>
+      <h1 className="text-3xl">Settings</h1>
       <form className="card mt-6 space-y-4" onSubmit={save}>
         {data?.map((d) => (
           <div key={d.key}>

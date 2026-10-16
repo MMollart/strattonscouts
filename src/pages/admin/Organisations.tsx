@@ -20,10 +20,7 @@ export default function AdminOrganisations() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Organisations</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
-      </div>
+      <h1 className="text-3xl">Organisations</h1>
       <form className="card mt-6 flex gap-2" onSubmit={(e) => { e.preventDefault(); setSearch(q.trim()); }}>
         <label className="sr-only" htmlFor="org-q">Search organisations</label>
         <input id="org-q" className="input" placeholder="Name or contact email" value={q} onChange={(e) => setQ(e.target.value)} />

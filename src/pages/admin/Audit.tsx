@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
@@ -85,10 +84,7 @@ export default function AdminAudit() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl">Audit history</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
-      </div>
+      <h1 className="text-3xl">Audit history</h1>
       <p className="mt-2 text-sm text-gray-600">
         Every significant change to bookings, prices, resources, users, organisations, assets, maintenance and agreements, with who made it and when.
         {access === 'restricted' && ' As a Viewer you can see who changed what and when, but not the values or reasons.'}

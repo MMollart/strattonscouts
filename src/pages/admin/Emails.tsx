@@ -45,10 +45,7 @@ export default function AdminEmails() {
   const [tab, setTab] = useState<'templates' | 'history'>(can('email_templates.manage') ? 'templates' : 'history');
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Emails</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
-      </div>
+      <h1 className="text-3xl">Emails</h1>
       <div role="tablist" className="mt-4 flex gap-2">
         {can('email_templates.manage') && (
           <button role="tab" aria-selected={tab === 'templates'} className={tab === 'templates' ? 'btn-primary' : 'btn-secondary'} onClick={() => setTab('templates')}>Templates</button>

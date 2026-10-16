@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { ErrorState, Spinner } from '../../components/ui';
@@ -73,8 +72,7 @@ export default function AdminCalendarFeeds() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
-      <h1 className="mt-2 text-3xl">Calendar subscriptions</h1>
+      <h1 className="text-3xl">Calendar subscriptions</h1>
       <p className="mt-2 text-gray-600">
         Subscribe to venue bookings in Google Calendar, Outlook or Apple Calendar. Calendars are read-only copies: changing an entry in your
         calendar app does not change the booking. Calendar apps check for changes on their own schedule, often every few hours.

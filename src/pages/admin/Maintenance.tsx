@@ -103,10 +103,7 @@ export default function AdminMaintenance() {
   const [tab, setTab] = useState<'maintenance' | 'faults' | 'types'>('maintenance');
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl">Maintenance</h1>
-        <Link to="/admin" className="text-sm font-bold text-scout-purple">← Dashboard</Link>
-      </div>
+      <h1 className="text-3xl">Maintenance</h1>
       <p className="mt-1 text-sm text-gray-600">
         Maintenance that blocks availability closes the resource, everything it is part of and everything that is part of it, just like a closure.
         Existing bookings are never cancelled automatically.
