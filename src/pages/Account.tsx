@@ -3,6 +3,7 @@ import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/useApi';
 import { useAuth, type SessionUser } from '../lib/auth';
 import { Spinner } from '../components/ui';
+import { CalendarSubscriptions } from '../components/CalendarFeeds';
 import { formatLondon } from '@shared/londonTime';
 
 interface Category { id: string; name: string; label: string; }
@@ -64,6 +65,8 @@ export default function Account() {
       </div>
 
       <OnLoan />
+
+      <CalendarSubscriptions />
 
       <form className="card mt-6 space-y-4" onSubmit={submit}>
         <h2 className="text-xl">Contact details</h2>

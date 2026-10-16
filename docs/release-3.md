@@ -11,6 +11,7 @@ apply (`npm run db:migrate:remote`) before the code that uses it is deployed.
 | `0018_maintenance.sql` | FR22 Resource maintenance & fault management |
 | `0019_agreements.sql` | FR20 Booking agreements & digital acceptance |
 | `0020_financial_reporting.sql` | FR10 Financial reporting |
+| `0021_calendar_feeds.sql` | FR17 External calendar integration |
 
 ## FR11 – Booking & administration audit history
 
@@ -319,3 +320,81 @@ day it was made.
   adding them up.
 - *Migration 0020* only adds two indexes and the `finance.export`
   permission, so it is safe to run before the code deploys.
+
+## FR17 – External calendar integration
+
+### One booking
+
+Each booking page has **Add to your calendar** (only while the booking holds
+its resource: confirmed, provisional or awaiting approval):
+
+- **Download calendar file (.ics)** from `GET /api/bookings/:id/calendar`,
+  for anyone who can see the booking. Works with Apple Calendar, Outlook and
+  other iCalendar apps.
+- **Google Calendar**, **Outlook (work or school)** and **Outlook.com** links
+  that open a pre-filled new event.
+
+The entry has the reference, resource, venue, date and times, the venue
+address (new optional setting **Venue address**), the status and a link back
+to the booking. Booking pages are also the confirmation page, so this covers
+both.
+
+### Subscriptions
+
+A subscription is a read-only iCalendar URL,
+`/api/feeds/<secret>.ics`. The secret is 256 random bits. Only its SHA-256
+hash is stored (`calendar_feeds.token_hash`), so the full URL is shown once
+when it is created or replaced, with Copy, "Open in calendar app" (webcal)
+and "Add to Google Calendar" buttons.
+
+| Feed | Who creates it | What it shows |
+| --- | --- | --- |
+| Personal (My account) | any signed-in customer | bookings they made, naming the organisation if any |
+| Organisation (organisation page) | the organisation's managers | the organisation's bookings, no customer names |
+| Venue (Admin → Calendar subscriptions) | `calendar.manage` | all resources, or chosen ones (each including what is part of it); names only if "Show who booked" is ticked |
+
+- Feeds contain bookings that currently hold their resource, from 90 days
+  ago onwards. Cancelled, rejected and expired bookings are left out, so the
+  calendar app removes them at its next refresh. Each booking keeps one UID,
+  so an amendment moves the existing entry, and `SEQUENCE` rises with each
+  change. Recurring series are ordinary bookings, so they appear and change
+  the same way.
+- Times are written with `TZID=Europe/London` and a VTIMEZONE block, so
+  entries stay at the right local time across the clocks changing.
+- Nothing private is included: no phone numbers, emails, notes, prices or
+  admin comments.
+- A feed stops working (404, with no reason given) when it is revoked or
+  replaced, when its organisation-feed owner stops being a manager, or when
+  its venue-feed owner loses `calendar.manage`.
+- **Replace link** issues a new secret; the old URL stops at once.
+  **Revoke** stops the URL and keeps the record. Owners can manage their
+  own feeds, any manager can manage the organisation's, and `calendar.manage`
+  can manage everyone's from the admin page.
+- Feeds are cached privately for 5 minutes and suggest an hourly refresh.
+  Calendar apps decide how often they check, so the UI never promises
+  immediate updates. Changing an entry in a calendar app changes nothing
+  here.
+- Creating, replacing and revoking are audited (`calendar.feed_*`).
+
+### Permissions
+
+| | Super Admin | Booking Admin | Viewer | Customer |
+| --- | :-: | :-: | :-: | :-: |
+| Download a booking they can see / personal feed | ✓ | ✓ | ✓ | ✓ |
+| Venue feeds, manage everyone's feeds (`calendar.manage`) | ✓ | ✓ | | |
+
+### Decisions
+
+- *Cancelled bookings in feeds:* (a) keep them with `STATUS:CANCELLED`,
+  (b) leave them out. Chose (b): subscriptions are a full snapshot, and every
+  major calendar app removes events that disappear from one, whereas apps
+  treat `STATUS:CANCELLED` inconsistently. A downloaded .ics for a
+  cancelled booking is marked cancelled.
+- *Showing the URL once:* the URL is a credential, so it is treated like a
+  password. Lose it and use Replace link.
+- *Personal feeds* show only bookings the person made, not every booking of
+  each organisation they belong to; managers have the organisation feed.
+- *Multi-resource bookings* appear as one entry per resource, matching how
+  they are stored and cancelled.
+- *Migration 0021* adds a table, the permission and nothing else, so it is
+  safe to run before the code deploys.

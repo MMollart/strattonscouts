@@ -8,6 +8,7 @@ import { OrganisationForm } from '../components/OrganisationForm';
 import { formatGBP } from '@shared/pricing';
 import { formatLondon } from '@shared/londonTime';
 import { HistoryPanel } from '../components/HistoryPanel';
+import { CalendarSubscriptions } from '../components/CalendarFeeds';
 
 interface Member { user_id: string; full_name: string; email: string; role: 'manager' | 'member'; }
 interface Invitation { id: string; email: string; role: string; status: string; expires_at: string; }
@@ -182,6 +183,8 @@ export default function OrganisationDetail() {
           )}
         </section>
       )}
+
+      {isManager && <CalendarSubscriptions organisation={{ id: data.id, name: data.name }} />}
 
       <section className="mt-8">
         <h2 className="text-xl">Organisation bookings</h2>

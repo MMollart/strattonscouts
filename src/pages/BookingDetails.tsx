@@ -10,6 +10,7 @@ import { AmendmentPanel } from '../components/AmendmentPanel';
 import { RESTRICTION_LABEL, type RestrictionKind } from '@shared/availability-rules';
 import { HistoryPanel } from '../components/HistoryPanel';
 import { AcceptedAgreements } from '../components/AcceptedAgreements';
+import { AddToCalendar } from '../components/AddToCalendar';
 
 interface BookingDetail {
   id: string;
@@ -187,6 +188,7 @@ export default function BookingDetails() {
         </button>
       )}
 
+      <AddToCalendar booking={data} />
       <AcceptedAgreements bookingId={data.id} />
       {isAdmin && <HistoryPanel filters={{ booking_id: data.id }} title="Booking history" />}
     </div>

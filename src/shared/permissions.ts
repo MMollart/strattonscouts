@@ -33,6 +33,7 @@ export const PERMISSIONS = [
   'maintenance.manage',
   'agreements.manage',
   'finance.export',
+  'calendar.manage',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 

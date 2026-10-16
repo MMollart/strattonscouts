@@ -37,7 +37,7 @@ describe('role permissions (FR08)', () => {
     const booker = await loadAccess(env, 'booker');
     expect(booker.roles).toEqual(['booking_admin']);
     expect(booker.permissions).toEqual(
-      ['assets.manage', 'audit.view', 'availability.manage', 'bookings.approve', 'bookings.create', 'bookings.manage', 'bookings.view', 'finance.export', 'finance.view', 'maintenance.manage', 'resources.manage'],
+      ['assets.manage', 'audit.view', 'availability.manage', 'bookings.approve', 'bookings.create', 'bookings.manage', 'bookings.view', 'calendar.manage', 'finance.export', 'finance.view', 'maintenance.manage', 'resources.manage'],
     );
     expect((await loadAccess(env, 'viewer')).permissions).toEqual(['bookings.view', 'finance.view']);
     expect((await loadAccess(env, 'customer')).permissions).toEqual([]);
@@ -121,6 +121,6 @@ describe('administrator management (FR08)', () => {
     expect((await call(settings.onRequestPut, { env, cookie, method: 'PUT', body: { values: { email_logo_url: '' } } })).status).toBe(200);
     expect((await call(settings.onRequestPut, { env, cookie, method: 'PUT', body: { values: { email_logo_url: 'https://cdn.example/logo.png' } } })).status).toBe(200);
     // The site header uses the same logo, and anyone can read it.
-    expect((await call(site.onRequestGet, { env })).body).toEqual({ venue_name: '1st Stratton Scouts', logo_url: 'https://cdn.example/logo.png' });
+    expect((await call(site.onRequestGet, { env })).body).toEqual({ venue_name: '1st Stratton Scouts', logo_url: 'https://cdn.example/logo.png', venue_address: '' });
   });
 });

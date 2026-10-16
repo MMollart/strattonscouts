@@ -449,3 +449,16 @@ export const agreementAcceptanceSchema = z.object({
   signature_image: signatureImage.nullable().optional(),
 });
 export type AgreementAcceptanceInput = z.infer<typeof agreementAcceptanceSchema>;
+
+// Release 3 / FR17: calendar subscription feeds.
+export const calendarFeedCreateSchema = z
+  .object({
+    kind: z.enum(['user', 'organisation', 'admin']),
+    name: z.string().trim().max(80).optional(),
+    organisation_id: z.string().min(1).optional(),
+    // admin feeds: null or missing means every resource
+    resource_ids: z.array(z.string().min(1)).min(1).max(50).nullable().optional(),
+    show_names: z.boolean().optional(),
+  })
+  .refine((v) => v.kind !== 'organisation' || !!v.organisation_id, { message: 'Choose an organisation', path: ['organisation_id'] });
+export type CalendarFeedCreateInput = z.infer<typeof calendarFeedCreateSchema>;
