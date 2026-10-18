@@ -6,6 +6,7 @@ import { getIntSetting, getSetting } from './settings';
 import { sendEmail } from './email';
 import type { OrganisationRole } from '@shared/validation';
 import { auditStatement, userActor, SYSTEM_ACTOR, type AuditActor } from './audit';
+import { can, type AuthUser } from './auth';
 
 /** The user's role in an organisation, or null if they are not a member. */
 export async function getMembershipRole(env: Env, organisationId: string, userId: string): Promise<OrganisationRole | null> {
@@ -13,6 +14,20 @@ export async function getMembershipRole(env: Env, organisationId: string, userId
     .bind(organisationId, userId)
     .first<{ role: OrganisationRole }>();
   return row?.role ?? null;
+}
+
+/**
+ * What a user may do with an organisation: its Organisation Managers, and
+ * administrators who manage bookings and customers (bookings.manage), may
+ * change its details, members and invitations.
+ */
+export async function organisationAccess(
+  env: Env,
+  organisationId: string,
+  user: AuthUser,
+): Promise<{ role: OrganisationRole | null; canManage: boolean }> {
+  const role = await getMembershipRole(env, organisationId, user.id);
+  return { role, canManage: role === 'manager' || can(user, 'bookings.manage') };
 }
 
 const MANAGER_COUNT_SQL = `(SELECT COUNT(*) FROM organisation_memberships WHERE organisation_id = ? AND role = 'manager')`;

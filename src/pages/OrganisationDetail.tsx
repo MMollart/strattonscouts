@@ -22,6 +22,8 @@ interface OrganisationDetailData {
   contact_email: string;
   contact_phone: string | null;
   my_role: 'manager' | 'member' | null;
+  /** Organisation Managers, and administrators who manage customers. */
+  can_manage?: boolean;
   members: Member[];
   invitations?: Invitation[];
 }
@@ -39,6 +41,8 @@ export default function OrganisationDetail() {
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'member' | 'manager'>('member');
+  const [addEmail, setAddEmail] = useState('');
+  const [addRole, setAddRole] = useState<'member' | 'manager'>('member');
   const [working, setWorking] = useState(false);
 
   async function reload() {
@@ -63,6 +67,7 @@ export default function OrganisationDetail() {
   if (error) return <ErrorState message={error} />;
   if (!data) return null;
   const isManager = data.my_role === 'manager';
+  const canManage = data.can_manage ?? isManager;
   const pending = data.invitations?.filter((i) => i.status === 'pending') ?? [];
 
   return (
@@ -74,6 +79,7 @@ export default function OrganisationDetail() {
           <p className="text-gray-600">{data.organisation_type} · {data.category_label}</p>
         </div>
         {data.my_role && <span className="badge bg-scout-purple/10 text-scout-purple">You are a {data.my_role === 'manager' ? 'Manager' : 'Member'}</span>}
+        {!data.my_role && canManage && <span className="badge bg-scout-purple/10 text-scout-purple">Managing as an administrator</span>}
       </div>
 
       {message && (
@@ -103,7 +109,7 @@ export default function OrganisationDetail() {
             </dl>
             <div className="flex gap-2">
               {data.my_role && <Link className="btn-primary" to="/resources">Book for this organisation</Link>}
-              {isManager && <button className="btn-secondary" onClick={() => setEditing(true)}>Edit details</button>}
+              {canManage && <button className="btn-secondary" onClick={() => setEditing(true)}>Edit details</button>}
             </div>
           </div>
         )}
@@ -119,17 +125,17 @@ export default function OrganisationDetail() {
                 <p className="text-sm text-gray-600">{m.email} · {m.role === 'manager' ? 'Organisation Manager' : 'Organisation Member'}</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {isManager && m.role === 'member' && (
+                {canManage && m.role === 'member' && (
                   <button className="btn-secondary" disabled={working} onClick={() => run(() => api.put(`/organisations/${id}/members/${m.user_id}`, { role: 'manager' }), `${m.full_name} is now a manager.`)}>
                     Make manager
                   </button>
                 )}
-                {isManager && m.role === 'manager' && (
+                {canManage && m.role === 'manager' && (
                   <button className="btn-secondary" disabled={working} onClick={() => run(() => api.put(`/organisations/${id}/members/${m.user_id}`, { role: 'member' }), `${m.full_name} is no longer a manager.`)}>
                     Remove manager role
                   </button>
                 )}
-                {(isManager || m.user_id === user?.id) && data.my_role && (
+                {(canManage || (m.user_id === user?.id && data.my_role)) && (
                   <button
                     className="btn-secondary"
                     disabled={working}
@@ -148,7 +154,34 @@ export default function OrganisationDetail() {
         </div>
       </section>
 
-      {isManager && (
+      {canManage && can('bookings.manage') && (
+        <section className="mt-8">
+          <h2 className="text-xl">Add someone with an account</h2>
+          <p className="mt-1 text-sm text-gray-600">Adds a registered user straight away, without an invitation.</p>
+          <form
+            className="card mt-3 grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(() => api.post(`/organisations/${id}/members`, { email: addEmail, role: addRole }), `${addEmail} has been added.`).then(() => setAddEmail(''));
+            }}
+          >
+            <div>
+              <label className="label" htmlFor="add-email">Their account email</label>
+              <input id="add-email" type="email" className="input" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} required />
+            </div>
+            <div>
+              <label className="label" htmlFor="add-role">Role</label>
+              <select id="add-role" className="input" value={addRole} onChange={(e) => setAddRole(e.target.value as 'member' | 'manager')}>
+                <option value="member">Member</option>
+                <option value="manager">Manager</option>
+              </select>
+            </div>
+            <button className="btn-primary" disabled={working}>Add</button>
+          </form>
+        </section>
+      )}
+
+      {canManage && (
         <section className="mt-8">
           <h2 className="text-xl">Invite someone</h2>
           <form

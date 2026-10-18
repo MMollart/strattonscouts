@@ -149,6 +149,17 @@ export const membershipUpdateSchema = z.object({
   role: organisationRoleSchema,
 });
 
+/** An administrator adding a registered user to an organisation straight away. */
+export const memberAddSchema = z.object({
+  email: z.string().trim().email().max(200),
+  role: organisationRoleSchema.default('member'),
+});
+
+/** An administrator creating an organisation on someone's behalf, naming its first manager. */
+export const adminOrganisationCreateSchema = organisationSchema.extend({
+  manager_email: z.string().trim().email().max(200),
+});
+
 // ------------------------- Pricing (FR02 / FR14) --------------------------
 const optionalIso = isoDateTime.nullable().optional();
 
