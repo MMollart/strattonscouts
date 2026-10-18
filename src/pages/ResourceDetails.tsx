@@ -15,6 +15,7 @@ interface ResourceDetail {
   min_notice_minutes: number | null;
   max_advance_days: number | null;
   availability_rules: string[];
+  length_rules?: string[];
   prices: { category: string; label: string; pricing_model: string; amount_pence: number; is_free: boolean }[];
   images: { id: string; r2_key: string; is_primary: boolean }[];
 }
@@ -67,12 +68,13 @@ export default function ResourceDetails() {
         </ul>
         <p className="mt-2 text-xs text-gray-500">Organisation rates and any discounts are shown in your quote when you book.</p>
 
-        {(data.min_notice_minutes || data.max_advance_days || data.availability_rules.length > 0) && (
+        {(data.min_notice_minutes || data.max_advance_days || data.availability_rules.length > 0 || !!data.length_rules?.length) && (
           <>
             <h2 className="mt-8 text-xl">Booking rules</h2>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-gray-700">
               {data.min_notice_minutes ? <li>Book at least {noticeText(data.min_notice_minutes)} in advance.</li> : null}
               {data.max_advance_days ? <li>Bookings open {data.max_advance_days} days ahead.</li> : null}
+              {data.length_rules?.map((r) => <li key={r}>{r}</li>)}
               {data.availability_rules.map((r) => <li key={r}>{r}</li>)}
             </ul>
           </>

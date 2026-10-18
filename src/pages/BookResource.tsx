@@ -4,7 +4,7 @@ import { useApi } from '../lib/useApi';
 import { api, ApiError } from '../lib/api';
 import { Spinner, ErrorState } from '../components/ui';
 import { useAuth } from '../lib/auth';
-import { londonToday, toLondon } from '@shared/londonTime';
+import { addDays, londonToday, toLondon } from '@shared/londonTime';
 import {
   AvailabilityNotice,
   BookingWindowFields,
@@ -27,6 +27,9 @@ interface ResourceDetail {
   pricing_model: 'hourly' | 'nightly' | 'fixed';
   requires_approval: boolean;
   provisional_hold_hours: number;
+  min_nights?: number | null;
+  default_start_time?: string | null;
+  default_end_time?: string | null;
   prices: { category: string; label: string; amount_pence: number; is_free: boolean }[];
 }
 
@@ -73,6 +76,21 @@ export default function BookResource() {
   const { quote, loading: quoting, error: quoteError } = useQuote({ resourceId: resource?.id, window: iso, organisationId: organisation?.id ?? null });
 
   useEffect(() => setSubmitError(null), [win]);
+
+  // Unless a time was picked on the calendar, start from the resource's usual
+  // arrival and departure times, ending the next day (or after its minimum
+  // nights) for nightly resources such as Camping.
+  useEffect(() => {
+    if (!resource || (params.get('start') && params.get('end'))) return;
+    const nights = resource.pricing_model === 'nightly' ? Math.max(1, resource.min_nights ?? 1) : 0;
+    setWin((w) => ({
+      ...w,
+      startTime: resource.default_start_time ?? w.startTime,
+      endDate: addDays(w.startDate, nights),
+      endTime: resource.default_end_time ?? w.endTime,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resource?.id]);
 
   async function submit() {
     if (!resource) return;

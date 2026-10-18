@@ -40,7 +40,7 @@ export const passwordResetConfirmSchema = z.object({
 });
 
 export const overrideSchema = z.object({
-  kinds: z.array(z.enum(['min_notice', 'max_advance', 'opening_hours', 'recurring_restriction'])).min(1),
+  kinds: z.array(z.enum(['min_notice', 'max_advance', 'opening_hours', 'recurring_restriction', 'min_length', 'max_length'])).min(1),
   reason: z.string().trim().min(3).max(500),
 });
 
@@ -260,6 +260,19 @@ export const restrictionsSchema = z.object({
   max_advance_days: z.number().int().min(1).max(3650).nullable(),
   // FR04: blank uses the global provisional_expiry_hours setting
   provisional_expiry_hours: z.number().int().min(1).max(720).nullable().optional(),
+  // Booking length (null: no rule; omitted keeps the current value).
+  min_duration_minutes: z.number().int().min(1).max(525_600).nullable().optional(),
+  max_duration_minutes: z.number().int().min(1).max(525_600).nullable().optional(),
+  min_nights: z.number().int().min(1).max(365).nullable().optional(),
+  max_nights: z.number().int().min(1).max(365).nullable().optional(),
+  default_start_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(),
+  default_end_time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(),
+}).refine((v) => !v.min_duration_minutes || !v.max_duration_minutes || v.max_duration_minutes >= v.min_duration_minutes, {
+  message: 'The maximum length must not be shorter than the minimum',
+  path: ['max_duration_minutes'],
+}).refine((v) => !v.min_nights || !v.max_nights || v.max_nights >= v.min_nights, {
+  message: 'The maximum number of nights must not be fewer than the minimum',
+  path: ['max_nights'],
 });
 
 export const bookingExpirySchema = z.object({ expires_at: isoDateTime });
@@ -451,7 +464,8 @@ export const agreementTemplateSchema = z.object({
 export type AgreementTemplateInput = z.infer<typeof agreementTemplateSchema>;
 
 export const agreementVersionSchema = z.object({
-  body: z.string().trim().min(10).max(50_000),
+  // May be left blank when a PDF is attached (checked on publish).
+  body: z.string().trim().max(50_000).default(''),
   effective_from: isoDateTime,
   change_note: z.string().trim().max(500).default(''),
 });

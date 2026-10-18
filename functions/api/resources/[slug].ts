@@ -3,13 +3,14 @@ import { error, json } from '../../_lib/http';
 import { loadCurrentPrices } from '../../_lib/public-prices';
 import { loadRestrictions } from '../../_lib/restrictions';
 import { provisionalHoldHours } from '../../_lib/provisional';
-import { describeRule } from '@shared/availability-rules';
+import { describeLength, describeRule } from '@shared/availability-rules';
 
 // Public: single resource detail by slug.
 export const onRequestGet: PagesFunction<Env> = async ({ env, params }) => {
   const slug = String(params.slug);
   const r = await env.DB.prepare(
-    `SELECT id, name, slug, description, parent_id, is_active, requires_approval, pricing_model, min_notice_minutes, max_advance_days, provisional_expiry_hours, created_at, updated_at
+    `SELECT id, name, slug, description, parent_id, is_active, requires_approval, pricing_model, min_notice_minutes, max_advance_days, provisional_expiry_hours,
+            min_duration_minutes, max_duration_minutes, min_nights, max_nights, default_start_time, default_end_time, created_at, updated_at
      FROM resources WHERE slug = ?`,
   )
     .bind(slug)
@@ -30,6 +31,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, params }) => {
   return json({
     ...r,
     availability_rules: restrictions.rules.map(describeRule),
+    length_rules: describeLength(restrictions.length),
     provisional_hold_hours: holdHours,
     is_active: !!(r.is_active as number),
     requires_approval: !!(r.requires_approval as number),
