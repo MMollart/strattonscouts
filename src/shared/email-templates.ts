@@ -21,7 +21,8 @@ export type EmailTemplateKey =
   | 'payment_reminder'
   | 'organisation_invitation'
   | 'password_reset'
-  | 'maintenance_notice';
+  | 'maintenance_notice'
+  | 'bookings_updated';
 
 /** The editable parts of an email. Sections are plain text with {{ placeholders }}. */
 export interface EmailContent {
@@ -103,6 +104,7 @@ export const PARAM_DESCRIPTION: Record<string, string> = {
   maintenance_title: 'What the maintenance is',
   maintenance_period: 'When the maintenance takes place (UK time)',
   maintenance_message: "The administrator's message about the maintenance",
+  booking_count: 'How many bookings the email lists',
 };
 
 const THANKS = 'Thank you,\n{{ venue_name }}';
@@ -225,6 +227,21 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     footer: FOOTER,
   },
   {
+    key: 'bookings_updated',
+    name: 'Several bookings updated',
+    trigger:
+      'An administrator approves, rejects, confirms or cancels several of one person’s bookings at once, or several of their provisional holds expire together. ' +
+      'Replaces the one-booking emails so they get a single email. The detail card is repeated for each booking.',
+    subject: 'Update on {{ booking_count }} of your {{ venue_name }} bookings',
+    badge: { label: 'Booking update', colour: 'blue' },
+    title: 'Here’s an update on your bookings.',
+    body: paras(HI, 'We’ve updated {{ booking_count }} of your bookings. Each one is listed below with its new status.'),
+    detail_card: lines('Booking: {{ resource_name }}', 'Status: {{ booking_status }}', WHEN, 'Total: {{ booking_cost }}', REF),
+    thanks: THANKS,
+    footer: FOOTER,
+    extra_params: ['booking_count'],
+  },
+  {
     key: 'payment_reminder',
     name: 'Payment reminder',
     trigger: 'An administrator sends a reminder from the booking page',
@@ -297,6 +314,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
 const BOOKING_TEMPLATES = new Set<EmailTemplateKey>([
   'booking_request_received', 'booking_approved', 'booking_rejected', 'booking_confirmation', 'booking_amended',
   'booking_amendment_rejected', 'booking_cancelled', 'provisional_booking', 'provisional_expired', 'payment_reminder', 'maintenance_notice',
+  'bookings_updated',
 ]);
 
 export function templateDefinition(key: string): TemplateDefinition | undefined {
@@ -348,18 +366,25 @@ const toLines = (text: string) => text.split('\n').map((l) => l.trim()).filter(B
 export function renderEmail(
   content: EmailContent & { badge?: TemplateDefinition['badge'] },
   params: Record<string, string>,
-  opts: { showLogoPlaceholder?: boolean } = {},
+  opts: {
+    showLogoPlaceholder?: boolean;
+    /** One set of values per booking: the detail card is repeated for each, filled from its own values. */
+    items?: Record<string, string>[];
+  } = {},
 ): RenderedEmail {
-  const value = (key: string) => params[key] ?? '';
-  const plain = (t: string) => t.replace(PLACEHOLDER, (_, k: string) => value(k));
-  const attr = (t: string) => escapeHtml(plain(t));
-  const html = (t: string) =>
+  const valueIn = (p: Record<string, string>) => (key: string) => p[key] ?? '';
+  const plainWith = (value: (k: string) => string) => (t: string) => t.replace(PLACEHOLDER, (_, k: string) => value(k));
+  const htmlWith = (value: (k: string) => string) => (t: string) =>
     escapeHtml(t).replace(/{{\s*([a-z_]+)\s*}}/g, (_, k: string) => {
       const v = escapeHtml(value(k));
       if (v && k.endsWith('_email')) return `<a href="mailto:${v}" style="color:inherit;text-decoration:underline;">${v}</a>`;
       if (/^https?:\/\//.test(value(k)) && k.endsWith('_url')) return `<a href="${v}" style="color:inherit;text-decoration:underline;word-break:break-all;">${v}</a>`;
       return v;
     });
+  const value = valueIn(params);
+  const plain = plainWith(value);
+  const attr = (t: string) => escapeHtml(plain(t));
+  const html = htmlWith(value);
 
   const subject = content.subject.replace(PLACEHOLDER, (_, k: string) => value(k).replace(/[\r\n]+/g, ' ')).trim();
   const paragraphs = content.body.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
@@ -382,12 +407,22 @@ export function renderEmail(
       textBody.push(filled);
     }
   }
-  const filledRows = rows.filter(([, v]) => plain(v).trim());
+  // Each card's rows, filled from the email's values or, for a list of bookings, each booking's.
+  const cards = (opts.items?.length ? opts.items : [{}]).map((item) => {
+    const v = valueIn({ ...params, ...item });
+    const p = plainWith(v);
+    const h = htmlWith(v);
+    const filled = rows.filter(([, val]) => p(val).trim());
+    return {
+      text: filled.map(([l, val]) => (l ? `${p(l)}: ${p(val)}` : p(val))).join('\n'),
+      html: filled.map(([l, val]): [string, string] => [h(l), h(val)]),
+    };
+  });
 
   const text = [
     plain(content.title),
     ...textBody,
-    filledRows.map(([l, v]) => (l ? `${plain(l)}: ${plain(v)}` : plain(v))).join('\n'),
+    ...cards.map((c) => c.text),
     toLines(content.thanks).map(plain).join('\n'),
     toLines(content.footer).map(plain).join('\n'),
   ]
@@ -399,7 +434,7 @@ export function renderEmail(
       badge: content.badge,
       title: html(content.title),
       body,
-      detailCard: filledRows.map(([l, v]) => [html(l), html(v)]),
+      detailCards: cards.map((c) => c.html),
       thanks: toLines(content.thanks).map(html),
       footer: toLines(content.footer).map(html),
     },
@@ -443,4 +478,14 @@ export const SAMPLE_PARAMS: Record<string, string> = {
   maintenance_title: 'Main Hall floor resurfacing',
   maintenance_period: '6 Jan 2026, 08:00 to 6 Jan 2026, 18:00',
   maintenance_message: 'The hall will be closed while the floor is sanded and sealed.',
+  booking_count: '2',
 };
+
+/** Example bookings for templates that list several (previews and test emails). */
+export function sampleItems(key: EmailTemplateKey): Record<string, string>[] | undefined {
+  if (key !== 'bookings_updated') return undefined;
+  return [
+    { booking_reference: 'SS-ABC123', resource_name: 'Main Hall', booking_status: 'Approved', booking_date: 'Tue, 6 Jan 2026', booking_start_time: '19:00', booking_end_time: '21:00', booking_cost: '£20.00' },
+    { booking_reference: 'SS-DEF456', resource_name: 'Kitchen', booking_status: 'Approved', booking_date: 'Tue, 13 Jan 2026', booking_start_time: '19:00', booking_end_time: '21:00', booking_cost: '£6.00' },
+  ];
+}

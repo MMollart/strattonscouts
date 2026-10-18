@@ -39,6 +39,18 @@ interface CustomerRow { id: string; full_name: string; email: string; category_l
 
 const STATUSES = ['pending_approval', 'provisional', 'confirmed', 'rejected', 'cancelled', 'expired'];
 
+type BulkAction = 'approve' | 'reject' | 'cancel';
+
+// Which statuses each bulk action applies to (approving a provisional hold confirms it).
+const BULK_FROM: Record<BulkAction, string[]> = {
+  approve: ['pending_approval', 'provisional'],
+  reject: ['pending_approval'],
+  cancel: ['pending_approval', 'provisional', 'confirmed'],
+};
+const BULK_DONE: Record<BulkAction, string> = { approve: 'approved or confirmed', reject: 'rejected', cancel: 'cancelled' };
+
+interface BulkResult { id: string; ok: boolean; message?: string }
+
 export default function AdminBookings() {
   const { can } = useAuth();
   const { data: resources } = useApi<ResourceRow[]>('/admin/resources');
@@ -50,6 +62,48 @@ export default function AdminBookings() {
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkWorking, setBulkWorking] = useState(false);
+  const [bulkOutcome, setBulkOutcome] = useState<{ action: BulkAction; done: number; failed: { reference: string; message: string }[] } | null>(null);
+
+  const bulkActions = (['approve', 'reject', 'cancel'] as const).filter((a) => can(a === 'cancel' ? 'bookings.manage' : 'bookings.approve'));
+  const selectable = (status: string) => bulkActions.some((a) => BULK_FROM[a].includes(status));
+  const selectedRows = (rows ?? []).filter((b) => selected.has(b.id));
+  const idsFor = (action: BulkAction) => selectedRows.filter((b) => BULK_FROM[action].includes(b.status)).map((b) => b.id);
+
+  function toggle(id: string) {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function runBulk(action: BulkAction) {
+    const ids = idsFor(action);
+    if (!ids.length) return;
+    const verb = action === 'approve' ? 'Approve or confirm' : action === 'reject' ? 'Reject' : 'Cancel';
+    if (!confirm(`${verb} ${ids.length} booking${ids.length === 1 ? '' : 's'}? Each person gets one email covering all of their bookings.`)) return;
+    setBulkWorking(true);
+    setError(null);
+    setBulkOutcome(null);
+    try {
+      const res = await api.post<{ results: BulkResult[]; updated: number }>('/admin/bookings/bulk', { ids, action });
+      const refOf = (id: string) => rows?.find((b) => b.id === id)?.reference ?? id;
+      setBulkOutcome({
+        action,
+        done: res.updated,
+        failed: res.results.filter((r) => !r.ok).map((r) => ({ reference: refOf(r.id), message: r.message ?? 'Could not be changed' })),
+      });
+      setSelected(new Set());
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Action failed');
+    } finally {
+      setBulkWorking(false);
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -150,6 +204,54 @@ export default function AdminBookings() {
         </form>
       </div>
 
+      {bulkActions.length > 0 && rows && rows.some((b) => selectable(b.status)) && (
+        <div className="card mt-6 flex flex-wrap items-center gap-2" role="region" aria-label="Act on several bookings">
+          <p className="mr-2 font-bold">{selectedRows.length} selected</p>
+          {can('bookings.approve') && rows.some((b) => b.status === 'pending_approval') && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setSelected(new Set(rows.filter((b) => b.status === 'pending_approval').map((b) => b.id)))}
+            >
+              Select all awaiting approval
+            </button>
+          )}
+          {selectedRows.length > 0 && <button type="button" className="btn-secondary" onClick={() => setSelected(new Set())}>Clear</button>}
+          <span className="flex-1" />
+          {bulkActions.includes('approve') && (
+            <button type="button" className="btn-teal" disabled={bulkWorking || !idsFor('approve').length} onClick={() => runBulk('approve')}>
+              Approve / confirm ({idsFor('approve').length})
+            </button>
+          )}
+          {bulkActions.includes('reject') && (
+            <button type="button" className="btn-danger" disabled={bulkWorking || !idsFor('reject').length} onClick={() => runBulk('reject')}>
+              Reject ({idsFor('reject').length})
+            </button>
+          )}
+          {bulkActions.includes('cancel') && (
+            <button type="button" className="btn-secondary" disabled={bulkWorking || !idsFor('cancel').length} onClick={() => runBulk('cancel')}>
+              Cancel ({idsFor('cancel').length})
+            </button>
+          )}
+        </div>
+      )}
+
+      {bulkOutcome && (
+        <div className="card mt-4" role="status">
+          <p className="font-bold text-scout-green">
+            {bulkOutcome.done} booking{bulkOutcome.done === 1 ? '' : 's'} {BULK_DONE[bulkOutcome.action]}.{bulkOutcome.done > 0 && ' Each person has been sent one email.'}
+          </p>
+          {bulkOutcome.failed.length > 0 && (
+            <>
+              <p className="mt-2 font-bold text-scout-red">{bulkOutcome.failed.length} could not be changed:</p>
+              <ul className="mt-1 list-disc pl-5 text-sm">
+                {bulkOutcome.failed.map((f) => <li key={f.reference}>{f.reference}: {f.message}</li>)}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="mt-6">
         {loading && <Spinner />}
         {error && <ErrorState message={error} />}
@@ -157,8 +259,18 @@ export default function AdminBookings() {
         {!loading && rows && rows.length > 0 && (
           <div className="space-y-2">
             {rows.map((b) => (
-              <div key={b.id} className="card">
+              <div key={b.id} className={`card ${selected.has(b.id) ? 'ring-2 ring-scout-purple' : ''}`}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex items-start gap-3">
+                  {selectable(b.status) && (
+                    <input
+                      type="checkbox"
+                      className="mt-1.5 h-5 w-5"
+                      aria-label={`Select booking ${b.reference}`}
+                      checked={selected.has(b.id)}
+                      onChange={() => toggle(b.id)}
+                    />
+                  )}
                   <div>
                     <Link to={`/bookings/${b.id}`} className="font-black text-scout-purple">{b.resource_name}</Link>
                     <p className="text-sm text-gray-600">
@@ -174,6 +286,7 @@ export default function AdminBookings() {
                     {b.status === 'provisional' && b.expires_at && (
                       <p className="text-xs font-bold text-scout-blue">Held until {formatLondon(b.expires_at)}</p>
                     )}
+                  </div>
                   </div>
                   <StatusBadge status={b.status} />
                 </div>

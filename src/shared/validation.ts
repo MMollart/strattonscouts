@@ -108,6 +108,12 @@ export const adminUserUpdateSchema = z.object({
   pricing_category_id: z.string().min(1),
 });
 
+/** An administrator acting on several bookings at once. */
+export const bulkBookingActionSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100),
+  action: z.enum(['approve', 'reject', 'cancel']),
+});
+
 /** A Super Admin setting a new password for someone (same rules as registration). */
 export const adminPasswordResetSchema = z.object({
   password: z.string().min(10).max(200),
