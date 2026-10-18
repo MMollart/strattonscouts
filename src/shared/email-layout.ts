@@ -34,8 +34,8 @@ export interface EmailSections {
   badge?: { label: string; colour: BadgeColour };
   title: string;
   body: BodyBlock[];
-  /** [label, value] rows; empty hides the card. */
-  detailCard: [string, string][];
+  /** One card per entry, each a list of [label, value] rows; an empty card is hidden. */
+  detailCards: [string, string][][];
   /** Lines of the sign-off; the last is bold. */
   thanks: string[];
   /** Lines of the footer; lines starting with # are bold. */
@@ -126,7 +126,7 @@ export function emailLayout(s: EmailSections, o: LayoutOptions): string {
     s.badge ? badge(s.badge) : '',
     title(s.title),
     ...s.body.map((b) => (b.kind === 'button' ? button(b.label, b.url) : para(b.html))),
-    detailCard(s.detailCard),
+    ...s.detailCards.map(detailCard),
     thanks(s.thanks),
   ]
     .filter(Boolean)

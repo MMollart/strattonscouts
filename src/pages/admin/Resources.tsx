@@ -20,6 +20,12 @@ export interface ResourceRow {
   min_notice_minutes?: number | null;
   max_advance_days?: number | null;
   provisional_expiry_hours?: number | null;
+  min_duration_minutes?: number | null;
+  max_duration_minutes?: number | null;
+  min_nights?: number | null;
+  max_nights?: number | null;
+  default_start_time?: string | null;
+  default_end_time?: string | null;
 }
 
 type Draft = Omit<ResourceRow, 'id'> & { id?: string };

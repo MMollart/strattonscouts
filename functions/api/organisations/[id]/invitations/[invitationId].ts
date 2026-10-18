@@ -1,15 +1,15 @@
 import type { Env } from '../../../../_lib/http';
 import { error, json, now } from '../../../../_lib/http';
 import { getAuthUser } from '../../../../_lib/auth';
-import { getMembershipRole } from '../../../../_lib/organisations';
+import { organisationAccess } from '../../../../_lib/organisations';
 import { auditStatement } from '../../../../_lib/audit';
 
-// Organisation Managers: revoke a pending invitation.
+// Organisation Managers and administrators: revoke a pending invitation.
 export const onRequestDelete: PagesFunction<Env> = async ({ env, request, params }) => {
   const user = await getAuthUser(env, request);
   if (!user) return error('Not authenticated', 401);
   const id = String(params.id);
-  if ((await getMembershipRole(env, id, user.id)) !== 'manager') return error('Only an Organisation Manager can do this', 403);
+  if (!(await organisationAccess(env, id, user)).canManage) return error('Only an Organisation Manager or an administrator can do this', 403);
   const [res] = await env.DB.batch([
     env.DB.prepare(
       `UPDATE organisation_invitations SET status = 'revoked', responded_at = ?, responded_by = ?

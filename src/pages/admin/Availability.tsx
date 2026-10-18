@@ -6,7 +6,7 @@ import { useAuth } from '../../lib/auth';
 import { Spinner, ErrorState, EmptyState } from '../../components/ui';
 import { BookingWindowFields, type BookingWindow, windowToIso } from '../../components/BookingWindowFields';
 import { formatLondon, londonToday } from '@shared/londonTime';
-import { describeRule, parseDays } from '@shared/availability-rules';
+import { describeLength, describeRule, parseDays } from '@shared/availability-rules';
 import { treeOrder, type ResourceRow } from './Resources';
 
 /** Loads the resource list that every availability page chooses from. */
@@ -40,8 +40,9 @@ function LimitsPanel({ resources, reload }: { resources: ResourceRow[]; reload: 
     <section aria-labelledby="limits-page-heading">
       <h1 id="limits-page-heading" className="text-3xl">Booking limits</h1>
       <p className="mt-1 text-sm text-gray-600">
-        How much notice each resource needs, how far ahead it can be booked and how long provisional holds last.
-        Limits apply to new bookings only.
+        How much notice each resource needs, how far ahead it can be booked, how long a booking must or may be (for example,
+        Camping overnight only), the usual arrival and departure times, and how long provisional holds last. Limits apply to new
+        bookings only; administrators can override them with a reason when booking for a customer.
       </p>
       <div className="mt-4 space-y-2">
         {resources.length === 0 && <EmptyState title="No resources yet" />}
@@ -54,6 +55,7 @@ function LimitsPanel({ resources, reload }: { resources: ResourceRow[]; reload: 
                 {' · '}{r.max_advance_days ? `up to ${r.max_advance_days} days ahead` : 'no advance limit'}
                 {' · '}{r.provisional_expiry_hours ? `${r.provisional_expiry_hours}h provisional hold` : 'default provisional hold'}
               </p>
+              {lengthSummary(r) && <p className="text-sm text-gray-600">{lengthSummary(r)}</p>}
             </div>
             {can('availability.manage') && <button type="button" className="btn-secondary" onClick={() => setEditing(r)}>Edit limits</button>}
           </div>
@@ -196,7 +198,30 @@ function ClosuresPanel({ resources }: { resources: ResourceRow[] }) {
   );
 }
 
+/** A resource's length rules and usual times, in one line. */
+function lengthSummary(r: ResourceRow): string {
+  const rules = describeLength({
+    minDurationMinutes: r.min_duration_minutes ?? null,
+    maxDurationMinutes: r.max_duration_minutes ?? null,
+    minNights: r.min_nights ?? null,
+    maxNights: r.max_nights ?? null,
+  });
+  const times = [r.default_start_time && `arrive ${r.default_start_time}`, r.default_end_time && `leave ${r.default_end_time}`].filter(Boolean).join(', ');
+  return [...rules.map((t) => t.replace(/\.$/, '')), times && `Usually ${times}`].filter(Boolean).join(' · ');
+}
+
+const hoursText = (minutes: number | null | undefined) => (minutes ? String(minutes / 60) : '');
+const toMinutes = (hours: string) => (hours ? Math.round(Number(hours) * 60) : null);
+const toCount = (n: string) => (n ? Number(n) : null);
+
 function LimitsEditor({ resource, onClose, onSaved }: { resource: ResourceRow; onClose: () => void; onSaved: () => void }) {
+  const nightly = resource.pricing_model === 'nightly';
+  const [minHours, setMinHours] = useState(hoursText(resource.min_duration_minutes));
+  const [maxHours, setMaxHours] = useState(hoursText(resource.max_duration_minutes));
+  const [minNights, setMinNights] = useState(resource.min_nights ? String(resource.min_nights) : '');
+  const [maxNights, setMaxNights] = useState(resource.max_nights ? String(resource.max_nights) : '');
+  const [arrive, setArrive] = useState(resource.default_start_time ?? '');
+  const [leave, setLeave] = useState(resource.default_end_time ?? '');
   const [noticeHours, setNoticeHours] = useState(resource.min_notice_minutes ? String(resource.min_notice_minutes / 60) : '');
   const [advanceDays, setAdvanceDays] = useState(resource.max_advance_days ? String(resource.max_advance_days) : '');
   const [holdHours, setHoldHours] = useState(resource.provisional_expiry_hours ? String(resource.provisional_expiry_hours) : '');
@@ -219,6 +244,12 @@ function LimitsEditor({ resource, onClose, onSaved }: { resource: ResourceRow; o
         min_notice_minutes: noticeHours ? Math.round(Number(noticeHours) * 60) : null,
         max_advance_days: advanceDays ? Number(advanceDays) : null,
         provisional_expiry_hours: holdHours ? Number(holdHours) : null,
+        min_duration_minutes: toMinutes(minHours),
+        max_duration_minutes: toMinutes(maxHours),
+        min_nights: toCount(minNights),
+        max_nights: toCount(maxNights),
+        default_start_time: arrive || null,
+        default_end_time: leave || null,
       });
       onSaved();
     } catch (err) {
@@ -232,10 +263,10 @@ function LimitsEditor({ resource, onClose, onSaved }: { resource: ResourceRow; o
     <dialog
       ref={dialogRef}
       aria-labelledby="limits-heading"
-      className="w-full max-w-md bg-transparent p-0 backdrop:bg-black/40"
+      className="w-full max-w-lg bg-transparent p-0 backdrop:bg-black/40"
       onCancel={(e) => { e.preventDefault(); onClose(); }}
     >
-      <form className="card w-full space-y-4" onSubmit={save}>
+      <form className="card max-h-[90vh] w-full space-y-4 overflow-y-auto" onSubmit={save}>
         <h2 id="limits-heading" className="text-2xl">Booking limits: {resource.name}</h2>
         <div>
           <label className="label" htmlFor="lim-notice">Minimum notice (hours)</label>
@@ -249,6 +280,48 @@ function LimitsEditor({ resource, onClose, onSaved }: { resource: ResourceRow; o
           <label className="label" htmlFor="lim-hold">Provisional hold (hours)</label>
           <input id="lim-hold" className="input" type="number" min={1} max={720} value={holdHours} onChange={(e) => setHoldHours(e.target.value)} placeholder="Use the global setting" />
         </div>
+        <fieldset className="space-y-3">
+          <legend className="label">Booking length</legend>
+          {nightly ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label" htmlFor="lim-min-nights">Minimum nights</label>
+                  <input id="lim-min-nights" className="input" type="number" min={1} max={365} value={minNights} onChange={(e) => setMinNights(e.target.value)} placeholder="No minimum" />
+                </div>
+                <div>
+                  <label className="label" htmlFor="lim-max-nights">Maximum nights</label>
+                  <input id="lim-max-nights" className="input" type="number" min={1} max={365} value={maxNights} onChange={(e) => setMaxNights(e.target.value)} placeholder="No maximum" />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">A minimum of 1 night means overnight bookings only: a booking must end on a later day than it starts.</p>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label" htmlFor="lim-min-hours">Minimum (hours)</label>
+                <input id="lim-min-hours" className="input" type="number" min={0.5} step={0.5} value={minHours} onChange={(e) => setMinHours(e.target.value)} placeholder="No minimum" />
+              </div>
+              <div>
+                <label className="label" htmlFor="lim-max-hours">Maximum (hours)</label>
+                <input id="lim-max-hours" className="input" type="number" min={0.5} step={0.5} value={maxHours} onChange={(e) => setMaxHours(e.target.value)} placeholder="No maximum" />
+              </div>
+            </div>
+          )}
+        </fieldset>
+        <fieldset>
+          <legend className="label">Usual times (the booking form starts with these)</legend>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label" htmlFor="lim-arrive">Arrive from</label>
+              <input id="lim-arrive" className="input" type="time" value={arrive} onChange={(e) => setArrive(e.target.value)} />
+            </div>
+            <div>
+              <label className="label" htmlFor="lim-leave">Leave by</label>
+              <input id="lim-leave" className="input" type="time" value={leave} onChange={(e) => setLeave(e.target.value)} />
+            </div>
+          </div>
+        </fieldset>
         <p className="text-xs text-gray-500">Limits apply to new bookings only. Existing bookings are not changed.</p>
         {error && <ErrorState message={error} />}
         <div className="flex gap-2">

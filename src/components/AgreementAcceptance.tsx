@@ -97,12 +97,19 @@ export function AgreementAcceptance({
         <div key={a.version_id} className="space-y-2">
           <h3 className="font-black">{a.title} <span className="text-sm font-normal text-gray-500">version {a.version_number}, in effect from {formatLondon(a.effective_from, { dateStyle: 'medium' })}</span></h3>
           {a.summary && <p className="text-sm text-gray-600">{a.summary}</p>}
-          <div className="max-h-64 overflow-y-auto rounded-lg border bg-white p-3" tabIndex={0} aria-label={`${a.title} text`}>
-            <AgreementText body={a.body} />
-          </div>
+          {a.body.trim() && (
+            <div className="max-h-64 overflow-y-auto rounded-lg border bg-white p-3" tabIndex={0} aria-label={`${a.title} text`}>
+              <AgreementText body={a.body} />
+            </div>
+          )}
           {a.has_pdf && (
-            <a className="text-sm font-bold text-scout-purple underline" href={`/api/agreements/versions/${a.version_id}/pdf`} target="_blank" rel="noopener noreferrer">
-              Open the full document (PDF)
+            <a
+              className={a.body.trim() ? 'text-sm font-bold text-scout-purple underline' : 'btn-secondary'}
+              href={`/api/agreements/versions/${a.version_id}/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {a.body.trim() ? 'Open the full document (PDF)' : `Read ${a.title} (PDF)`}
             </a>
           )}
           <label className="flex items-start gap-2">

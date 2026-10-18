@@ -71,6 +71,18 @@ export function bookingTimeParams(startsAt: string, endsAt: string): {
 
 export const MAX_EMAIL_ATTEMPTS = 5;
 
+// A list of bookings is kept with an email's values (for retries) under this key.
+const ITEMS_KEY = '__items';
+
+function storedParams(params: Record<string, string>, items?: Record<string, string>[]): string {
+  return JSON.stringify(items?.length ? { ...params, [ITEMS_KEY]: JSON.stringify(items) } : params);
+}
+
+function readStoredParams(json: string): { params: Record<string, string>; items?: Record<string, string>[] } {
+  const { [ITEMS_KEY]: items, ...params } = JSON.parse(json) as Record<string, string>;
+  return { params, items: items ? (JSON.parse(items) as Record<string, string>[]) : undefined };
+}
+
 /** Minutes to wait before retry n (1-based): 5, 10, 20, 40. */
 function retryDelayMinutes(attempt: number): number {
   return 5 * 2 ** (attempt - 1);
@@ -239,6 +251,8 @@ export async function sendEmail(
     dedupeKey?: string;
     /** Use this content instead of the saved template (test emails). */
     content?: EmailContent;
+    /** Several bookings in one email: each gets its own detail card, filled from these values. */
+    items?: Record<string, string>[];
   },
 ): Promise<{ status: 'sent' | 'failed' | 'disabled' | 'duplicate' }> {
   const eventId = newId('eml');
@@ -260,16 +274,16 @@ export async function sendEmail(
        WHERE email_events.status = 'failed'
        RETURNING id, attempts`,
     )
-      .bind(eventId, args.bookingId ?? null, args.to, args.template, dedupeKey, status, now(), reference, def?.required || args.content ? null : JSON.stringify(args.params))
+      .bind(eventId, args.bookingId ?? null, args.to, args.template, dedupeKey, status, now(), reference, def?.required || args.content ? null : storedParams(args.params, args.items))
       .first<{ id: string; attempts: number }>();
     if (!claim) return { status: 'duplicate' };
     attempt = claim.attempts;
     if (!template.is_enabled) return { status: 'disabled' };
-    return { status: (await attemptSend(env, claim.id, attempt, args.to, args.template, template, params)).status };
+    return { status: (await attemptSend(env, claim.id, attempt, args.to, args.template, template, params, args.items)).status };
   } catch {
     // If bookkeeping is unavailable, still attempt the send.
     if (!template.is_enabled) return { status: 'disabled' };
-    const email = renderEmail(template, params);
+    const email = renderEmail(template, params, { items: args.items });
     return { status: (await deliver(env, args.to, email, dedupeKey, args.template)).status };
   }
 }
@@ -282,8 +296,9 @@ async function attemptSend(
   key: EmailTemplate,
   template: LoadedTemplate,
   params: Record<string, string>,
+  items?: Record<string, string>[],
 ): Promise<DeliveryResult> {
-  const email = renderEmail(template, params);
+  const email = renderEmail(template, params, { items });
   await env.DB.prepare('UPDATE email_events SET subject = ? WHERE id = ?').bind(email.subject, eventId).run();
   const result = await deliver(env, to, email, eventId, key);
   await recordOutcome(env, eventId, attempt, result);
@@ -316,8 +331,9 @@ export async function retryFailedEmails(env: Env, opts: { limit?: number } = {})
       await env.DB.prepare(`UPDATE email_events SET status = 'disabled', params = NULL WHERE id = ?`).bind(e.id).run();
       continue;
     }
-    const params = { ...(await commonParams(env, e.recipient)), ...(JSON.parse(e.params) as Record<string, string>) };
-    if ((await attemptSend(env, e.id, e.attempts + 1, e.recipient, e.template, template, params)).status === 'sent') sent++;
+    const { params: stored, items } = readStoredParams(e.params);
+    const params = { ...(await commonParams(env, e.recipient)), ...stored };
+    if ((await attemptSend(env, e.id, e.attempts + 1, e.recipient, e.template, template, params, items)).status === 'sent') sent++;
   }
   return sent;
 }

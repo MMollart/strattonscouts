@@ -1,7 +1,7 @@
 import type { Env } from '../../../_lib/http';
 import { error, json } from '../../../_lib/http';
 import { requirePermission } from '../../../_lib/auth';
-import { transitionBooking } from '../../../_lib/lifecycle';
+import { transitionBooking, transitionErrorMessage } from '../../../_lib/lifecycle';
 
 // Admin: approve or reject a pending booking, or confirm a provisional one
 // (decision 'approve'; revalidated like an approval). Body: { decision: 'approve'|'reject' }
@@ -27,17 +27,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
     actorIsAdmin: true,
   });
   if (!result.ok) {
-    const message =
-      result.code === 'conflict'
-        ? 'This booking now clashes with another active booking, so it cannot be approved'
-        : result.code === 'closure'
-          ? 'This booking overlaps a closure, so it cannot be approved'
-          : result.code === 'expired'
-            ? 'This provisional booking has expired and its time has been released'
-          : result.code === 'not_found'
-            ? 'Booking not found'
-            : 'This booking has already been updated';
-    return error(message, result.code === 'not_found' ? 404 : 409, { code: result.code });
+    return error(transitionErrorMessage(result.code), result.code === 'not_found' ? 404 : 409, { code: result.code });
   }
   return json({ ok: true });
 };
