@@ -42,6 +42,7 @@ const VERB_LABELS: Record<string, string> = {
   expiry_changed: 'hold expiry changed',
   role_changed: 'administrator role changed',
   bootstrapped: 'first Super Admin created',
+  password_reset: 'password reset by an administrator',
 };
 
 /** "pricing.rate_updated" -> "Pricing: rate updated"; booking events read naturally. */

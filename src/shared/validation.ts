@@ -108,6 +108,11 @@ export const adminUserUpdateSchema = z.object({
   pricing_category_id: z.string().min(1),
 });
 
+/** A Super Admin setting a new password for someone (same rules as registration). */
+export const adminPasswordResetSchema = z.object({
+  password: z.string().min(10).max(200),
+});
+
 export const adminRoleUpdateSchema = z.object({
   role: z.enum(ADMIN_ROLES).nullable(),
 });
