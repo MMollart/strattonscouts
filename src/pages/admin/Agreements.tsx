@@ -271,7 +271,7 @@ function TemplateView({ id, nameOf, onClose, onEdit, onChanged }: { id: string; 
                   </span>
                   {v.change_note && <span className="block text-sm text-gray-600">{v.change_note}</span>}
                 </summary>
-                <div className="mt-2 max-h-72 overflow-y-auto rounded border bg-white p-3"><AgreementText body={v.body} /></div>
+                {v.body.trim() && <div className="mt-2 max-h-72 overflow-y-auto rounded border bg-white p-3"><AgreementText body={v.body} /></div>}
                 {v.has_pdf && <a className="mt-2 inline-block text-sm font-bold text-scout-purple underline" href={`/api/agreements/versions/${v.id}/pdf`} target="_blank" rel="noopener noreferrer">{v.pdf_name ?? 'PDF'}</a>}
                 <p className="mt-1 text-xs text-gray-500">Published {formatLondon(v.created_at)}{v.created_by_name ? ` by ${v.created_by_name}` : ''}</p>
                 <p className="break-all text-xs text-gray-400">SHA-256: {v.content_hash}</p>
@@ -317,6 +317,10 @@ function PublishVersion({ templateId, initialBody, onCancel, onPublished }: { te
 
   async function publish(e: React.FormEvent) {
     e.preventDefault();
+    if (body.trim().length < 10 && !file.current?.files?.length) {
+      setError('Add the agreement wording or attach a PDF.');
+      return;
+    }
     if (!confirm('Publish this version? It cannot be edited afterwards.')) return;
     setSaving(true);
     setError(null);
@@ -341,13 +345,13 @@ function PublishVersion({ templateId, initialBody, onCancel, onPublished }: { te
       <h3 className="text-xl">New version</h3>
       <div>
         <div className="flex items-center justify-between">
-          <label className="label" htmlFor="agv-body">Wording</label>
+          <label className="label" htmlFor="agv-body">Wording (optional if you attach a PDF)</label>
           <button type="button" className="text-sm font-bold text-scout-purple" onClick={() => setPreview(!preview)}>{preview ? 'Edit' : 'Preview'}</button>
         </div>
         {preview ? (
           <div className="max-h-72 overflow-y-auto rounded-lg border bg-white p-3"><AgreementText body={body} /></div>
         ) : (
-          <textarea id="agv-body" className="input font-mono text-sm" rows={12} required minLength={10} maxLength={50000} value={body} onChange={(e) => setBody(e.target.value)} />
+          <textarea id="agv-body" className="input font-mono text-sm" rows={12} maxLength={50000} value={body} onChange={(e) => setBody(e.target.value)} />
         )}
         <p className="mt-1 text-xs text-gray-500">{FORMAT_HELP}</p>
       </div>
@@ -367,7 +371,8 @@ function PublishVersion({ templateId, initialBody, onCancel, onPublished }: { te
         <input id="agv-note" className="input" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
       <div>
-        <label className="label" htmlFor="agv-file">Attach a PDF (optional, up to 10 MB)</label>
+        <label className="label" htmlFor="agv-file">Attach a PDF (up to 10 MB)</label>
+        <p className="mb-1 text-xs text-gray-500">Upload your existing agreement document. Customers open it and confirm they accept it when they book.</p>
         <input id="agv-file" ref={file} type="file" accept="application/pdf" className="block text-sm" />
       </div>
       {error && <ErrorState message={error} />}

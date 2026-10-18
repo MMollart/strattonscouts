@@ -37,9 +37,11 @@ export function AcceptedAgreements({ bookingId }: { bookingId: string }) {
                   {a.signed_name ? `, signed “${a.signed_name}”` : ''}{a.amendment_id ? ' with a change request' : ''}
                 </span>
               </summary>
-              <div className="mt-3 max-h-80 overflow-y-auto rounded-lg border bg-white p-3">
-                <AgreementText body={a.body} />
-              </div>
+              {a.body.trim() && (
+                <div className="mt-3 max-h-80 overflow-y-auto rounded-lg border bg-white p-3">
+                  <AgreementText body={a.body} />
+                </div>
+              )}
               {a.has_pdf && (
                 <a className="mt-2 inline-block text-sm font-bold text-scout-purple underline" href={`/api/agreements/versions/${a.version_id}/pdf`} target="_blank" rel="noopener noreferrer">
                   Open the document (PDF)

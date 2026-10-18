@@ -253,6 +253,25 @@ describe('managing agreements (FR20 §5.1–5.2, §5.10)', () => {
     expect(res.body).toBe('%PDF-1.4 hello');
     expect((await required(['res_main']))[0]).toMatchObject({ has_pdf: true });
   });
+
+  it('accepts a PDF on its own, but not a version with neither wording nor a PDF', async () => {
+    const t = await call(templatesApi.onRequestPost, { env, cookie: superAdmin, body: { title: 'Camping terms', resource_ids: ['res_camping'] } });
+    const publish = async (file: File | null) => {
+      const form = new FormData();
+      form.set('effective_from', past());
+      if (file) form.set('file', file);
+      const request = new Request('http://localhost/api/admin/agreements/x/versions', { method: 'POST', headers: { cookie: superAdmin }, body: form });
+      const res = await versionsApi.onRequestPost({ request, env, params: { id: t.body.id } } as unknown as Parameters<typeof versionsApi.onRequestPost>[0]);
+      return { status: res.status, body: (await res.json()) as { id: string; details?: { code?: string } } };
+    };
+    const empty = await publish(null);
+    expect(empty.status).toBe(400);
+    expect(empty.body.details?.code).toBe('no_content');
+    expect((await call(versionsApi.onRequestPost, { env, cookie: superAdmin, params: { id: t.body.id }, body: { body: 'short', effective_from: past() } })).status).toBe(400);
+    const pdfOnly = await publish(new File(['%PDF-1.4 camping'], 'camping.pdf', { type: 'application/pdf' }));
+    expect(pdfOnly.status).toBe(201);
+    expect((await required(['res_camping']))[0]).toMatchObject({ body: '', has_pdf: true });
+  });
 });
 
 describe('agreement wording (FR20 §5.1)', () => {
