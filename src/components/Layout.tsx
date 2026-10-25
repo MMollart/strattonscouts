@@ -2,9 +2,11 @@ import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useState } from 'react';
 import { useApi } from '../lib/useApi';
+import { useBasket } from '../lib/basket';
 
 export function Header() {
   const { user, isAdmin, logout } = useAuth();
+  const basket = useBasket();
   const [open, setOpen] = useState(false);
   const { data: site } = useApi<{ venue_name: string; logo_url: string }>('/site');
   const [logoFailed, setLogoFailed] = useState(false);
@@ -16,11 +18,16 @@ export function Header() {
       <NavItem to="/availability" label="Availability" onClick={() => setOpen(false)} />
       {user ? (
         <>
+          {basket.resourceIds.length > 0 && (
+            <Link to="/checkout" className="rounded-full bg-white px-3 py-1 font-bold text-scout-purple" onClick={() => setOpen(false)}>
+              Your booking ({basket.resourceIds.length})
+            </Link>
+          )}
           <NavItem to="/my-bookings" label="My Bookings" onClick={() => setOpen(false)} />
           <NavItem to="/organisations" label="Organisations" onClick={() => setOpen(false)} />
           <NavItem to="/account" label="My Account" onClick={() => setOpen(false)} />
           {isAdmin && <NavItem to="/admin" label="Admin" onClick={() => setOpen(false)} />}
-          <button className="btn-secondary" onClick={() => { void logout(); setOpen(false); }}>
+          <button className="btn-secondary" onClick={() => { void logout(); basket.clear(); setOpen(false); }}>
             Log out
           </button>
         </>
