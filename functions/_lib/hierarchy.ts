@@ -26,14 +26,15 @@ export async function checkParent(env: Env, resourceId: string | null, parentId:
 
   const clash = await env.DB.prepare(
     `SELECT a.reference AS a_ref, ra.name AS a_name, b.reference AS b_ref, rb.name AS b_name
-     FROM bookings a
-     JOIN bookings b ON a.starts_at < b.ends_at AND a.ends_at > b.starts_at
-     JOIN resources ra ON ra.id = a.resource_id
-     JOIN resources rb ON rb.id = b.resource_id
+     FROM bookings a JOIN booking_resources bra ON bra.booking_id = a.id
+     JOIN bookings b ON a.starts_at < b.ends_at AND a.ends_at > b.starts_at AND b.id <> a.id
+     JOIN booking_resources brb ON brb.booking_id = b.id
+     JOIN resources ra ON ra.id = bra.resource_id
+     JOIN resources rb ON rb.id = brb.resource_id
      WHERE ${activeBookingSql('a')} AND ${activeBookingSql('b')}
        AND a.ends_at > ${NOW_SQL}
-       AND (a.resource_id = ? OR a.resource_id IN (${DESCENDANTS_SQL}))
-       AND (b.resource_id = ? OR b.resource_id IN (${ANCESTORS_SQL}))
+       AND (bra.resource_id = ? OR bra.resource_id IN (${DESCENDANTS_SQL}))
+       AND (brb.resource_id = ? OR brb.resource_id IN (${ANCESTORS_SQL}))
      LIMIT 1`,
   )
     .bind(resourceId, resourceId, parentId, parentId)

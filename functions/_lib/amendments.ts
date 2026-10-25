@@ -2,7 +2,7 @@ import type { Env } from './http';
 import type { AuthUser } from './auth';
 import { activeBookingSql } from './availability-sql';
 import { bookingAccess } from './booking-access';
-import { planAmendments, type AmendProblem, type AmendTarget, type PlannedChange } from './amend';
+import { loadHeldResources, planAmendments, type AmendProblem, type AmendTarget, type PlannedChange } from './amend';
 
 /**
  * Customer booking amendments (FR12). A request is validated and priced like a
@@ -17,13 +17,20 @@ export interface AmendableBooking extends AmendTarget {
 }
 
 export async function loadAmendable(env: Env, bookingId: string): Promise<AmendableBooking | null> {
-  return env.DB.prepare(
+  const booking = await env.DB.prepare(
     `SELECT id, reference, user_id, organisation_id, resource_id, starts_at, ends_at, total_amount_pence, status,
             ${activeBookingSql('')} AS active
      FROM bookings WHERE id = ?`,
   )
     .bind(bookingId)
     .first<AmendableBooking>();
+  if (!booking) return null;
+  return { ...booking, resource_ids: (await loadHeldResources(env, [booking.id])).get(booking.id) ?? [booking.resource_id] };
+}
+
+/** The resources a change request asks for: resource_ids, or resource_id alone. */
+export function requestedResources(input: { resource_id: string; resource_ids?: string[] }): string[] {
+  return [...new Set([input.resource_id, ...(input.resource_ids ?? [])])];
 }
 
 export type AmendmentCheck =
@@ -35,7 +42,7 @@ export async function checkAmendment(
   env: Env,
   user: AuthUser,
   bookingId: string,
-  change: { resourceId: string; startsAt: string; endsAt: string },
+  change: { resourceIds: string[]; startsAt: string; endsAt: string },
 ): Promise<AmendmentCheck> {
   const booking = await loadAmendable(env, bookingId);
   if (!booking) return { ok: false, status: 404, message: 'Booking not found', code: 'not_found' };
@@ -45,7 +52,8 @@ export async function checkAmendment(
   if (Date.parse(booking.starts_at) <= Date.now()) {
     return { ok: false, status: 400, message: 'A booking that has started cannot be changed', code: 'started' };
   }
-  if (booking.resource_id === change.resourceId && new Date(booking.starts_at).getTime() === new Date(change.startsAt).getTime()
+  const sameResources = [...(booking.resource_ids ?? [])].sort().join() === [...change.resourceIds].sort().join();
+  if (sameResources && new Date(booking.starts_at).getTime() === new Date(change.startsAt).getTime()
       && new Date(booking.ends_at).getTime() === new Date(change.endsAt).getTime()) {
     return { ok: false, status: 400, message: 'The proposed booking is the same as the current one', code: 'unchanged' };
   }

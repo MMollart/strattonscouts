@@ -337,6 +337,8 @@ export const seriesAmendSchema = z.object({
 export const amendmentRequestSchema = z
   .object({
     resource_id: z.string().min(1),
+    // Every resource the booking should hold after the change (resource_id first); omitted means resource_id alone.
+    resource_ids: z.array(z.string().min(1)).min(1).max(20).optional(),
     starts_at: isoDateTime,
     ends_at: isoDateTime,
     note: z.string().trim().max(1000).nullable().optional(),

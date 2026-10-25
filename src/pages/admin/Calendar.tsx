@@ -16,6 +16,8 @@ interface Booking {
   starts_at: string;
   ends_at: string;
   resource_id: string;
+  /** Every resource the booking holds; it shows on each one. */
+  resource_ids?: string[];
   resource_name: string;
   customer_name: string;
   customer_email: string;
@@ -28,6 +30,8 @@ interface Booking {
 }
 
 interface Resource { id: string; name: string; is_active: boolean }
+
+const heldBy = (b: { resource_id: string; resource_ids?: string[] }) => (b.resource_ids?.length ? b.resource_ids : [b.resource_id]);
 interface Closure { id: string; resource_id: string; starts_at: string; ends_at: string; reason: string | null; maintenance_id?: string | null }
 interface Maintenance {
   id: string;
@@ -137,7 +141,7 @@ export default function AdminCalendar() {
         ? `Week of ${formatLondon(`${range.days[0]}T12:00:00Z`, { day: 'numeric', month: 'long', year: 'numeric' })}`
         : formatLondon(`${date.slice(0, 7)}-15T12:00:00Z`, { month: 'long', year: 'numeric' });
 
-  const visible = (bookings ?? []).filter((b) => !hidden.has(b.resource_id));
+  const visible = (bookings ?? []).filter((b) => heldBy(b).some((id) => !hidden.has(id)));
 
   return (
     <div>
@@ -344,7 +348,7 @@ function DayGrid({
                 </Link>
               );
             })}
-            {bookings.filter((b) => b.resource_id === r.id && onDay(b, day)).map((b) => {
+            {bookings.filter((b) => heldBy(b).includes(r.id) && onDay(b, day)).map((b) => {
               const p = dayPosition(b, day, START_HOUR, END_HOUR);
               return (
                 <button

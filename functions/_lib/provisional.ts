@@ -4,6 +4,7 @@ import { getIntSetting } from './settings';
 import { bookingTimeParams } from './email';
 import { sendBookingEmails, type BookingEmail } from './booking-emails';
 import { formatGBP } from '@shared/pricing';
+import { resourceNamesSql } from './availability-sql';
 
 /**
  * Provisional bookings (FR04). A provisional booking holds its resource until
@@ -48,7 +49,7 @@ interface ExpiringBooking {
 export async function expireProvisionalBookings(env: Env, opts: { nowIso?: string; limit?: number } = {}): Promise<number> {
   const nowIso = opts.nowIso ?? now();
   const due = await env.DB.prepare(
-    `SELECT b.id, b.reference, b.starts_at, b.ends_at, b.total_amount_pence, r.name AS resource_name, u.email, u.full_name
+    `SELECT b.id, b.reference, b.starts_at, b.ends_at, b.total_amount_pence, ${resourceNamesSql('b')} AS resource_name, u.email, u.full_name
      FROM bookings b JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id
      WHERE b.status = 'provisional' AND b.expires_at <= ?
      ORDER BY b.expires_at LIMIT ?`,

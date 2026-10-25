@@ -2,7 +2,7 @@ import type { Env } from '../../../_lib/http';
 import { error } from '../../../_lib/http';
 import { getAuthUser } from '../../../_lib/auth';
 import { bookingAccess } from '../../../_lib/booking-access';
-import { effectiveStatusSql } from '../../../_lib/availability-sql';
+import { effectiveStatusSql, resourceNamesSql } from '../../../_lib/availability-sql';
 import { calendarResponse, venueInfo } from '../../../_lib/calendar';
 import { bookingCalendarEvent, buildCalendar } from '@shared/ical';
 
@@ -12,7 +12,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request, params })
   if (!user) return error('Not authenticated', 401);
   const b = await env.DB.prepare(
     `SELECT b.id, b.reference, b.user_id, b.organisation_id, b.starts_at, b.ends_at, ${effectiveStatusSql('b')} AS status, b.updated_at,
-            r.name AS resource_name, o.name AS organisation_name
+            ${resourceNamesSql('b')} AS resource_name, o.name AS organisation_name
      FROM bookings b JOIN resources r ON r.id = b.resource_id LEFT JOIN organisations o ON o.id = b.organisation_id
      WHERE b.id = ?`,
   )

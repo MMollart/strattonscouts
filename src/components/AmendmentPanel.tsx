@@ -52,13 +52,19 @@ export function AmendmentPanel({
   booking,
   canRequest,
 }: {
-  booking: { id: string; resource_id: string; starts_at: string; ends_at: string };
+  booking: { id: string; resource_id: string; starts_at: string; ends_at: string; resources?: { resource_id: string }[] };
   canRequest: boolean;
 }) {
   const { data: history, setData: setHistory } = useApi<Amendment[]>(`/bookings/${booking.id}/amendments`, [booking.id]);
   const { data: resources } = useApi<{ id: string; name: string }[]>('/resources');
   const [open, setOpen] = useState(false);
-  const [resourceId, setResourceId] = useState(booking.resource_id);
+  // The resources the booking should hold after the change.
+  const [resourceIds, setResourceIds] = useState<string[]>(() =>
+    booking.resources?.length ? booking.resources.map((r) => r.resource_id) : [booking.resource_id],
+  );
+  const toggleResource = (id: string) =>
+    setResourceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  const requested = () => ({ resource_id: resourceIds[0], resource_ids: resourceIds });
   const [win, setWin] = useState<BookingWindow>(() => {
     const s = toLondon(booking.starts_at);
     const e = toLondon(booking.ends_at);
@@ -75,7 +81,7 @@ export function AmendmentPanel({
   useEffect(() => {
     setQuote(null);
     setError(null);
-  }, [resourceId, win]);
+  }, [resourceIds, win]);
 
   async function reload() {
     setHistory(await api.get<Amendment[]>(`/bookings/${booking.id}/amendments`));
@@ -83,10 +89,11 @@ export function AmendmentPanel({
 
   async function check() {
     if (!iso) return setError('The end must be after the start');
+    if (!resourceIds.length) return setError('Choose at least one resource');
     setWorking(true);
     setError(null);
     try {
-      setQuote(await api.post<Quote>(`/bookings/${booking.id}/amendments/quote`, { resource_id: resourceId, starts_at: iso.startsAt, ends_at: iso.endsAt }));
+      setQuote(await api.post<Quote>(`/bookings/${booking.id}/amendments/quote`, { ...requested(), starts_at: iso.startsAt, ends_at: iso.endsAt }));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not check this change');
     } finally {
@@ -99,7 +106,7 @@ export function AmendmentPanel({
     setWorking(true);
     setError(null);
     try {
-      await api.post(`/bookings/${booking.id}/amendments`, { resource_id: resourceId, starts_at: iso.startsAt, ends_at: iso.endsAt, note: note.trim() || null, agreements: quote?.agreements_required.length ? acceptance : null });
+      await api.post(`/bookings/${booking.id}/amendments`, { ...requested(), starts_at: iso.startsAt, ends_at: iso.endsAt, note: note.trim() || null, agreements: quote?.agreements_required.length ? acceptance : null });
       setOpen(false);
       setQuote(null);
       await reload();
@@ -141,12 +148,18 @@ export function AmendmentPanel({
 
       {open && (
         <div className="card mt-3 space-y-4">
-          <div>
-            <label className="label" htmlFor="am-resource">Resource</label>
-            <select id="am-resource" className="input" value={resourceId} onChange={(e) => setResourceId(e.target.value)}>
-              {(resources ?? []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-          </div>
+          <fieldset>
+            <legend className="label">Resources</legend>
+            <p className="mb-2 text-xs text-gray-500">Tick every resource the booking should include. Add or remove resources, or change the time below.</p>
+            <div className="grid gap-1 sm:grid-cols-2">
+              {(resources ?? []).map((r) => (
+                <label key={r.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={resourceIds.includes(r.id)} onChange={() => toggleResource(r.id)} />
+                  {r.name}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <BookingWindowFields value={win} onChange={setWin} idPrefix="am" minDate={londonToday()} />
           <div>
             <label className="label" htmlFor="am-note">Note for the administrator (optional)</label>

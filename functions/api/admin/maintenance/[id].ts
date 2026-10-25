@@ -5,6 +5,7 @@ import { parseBody } from '../../../_lib/request';
 import { saveMaintenance } from '../../../_lib/maintenance-save';
 import { MAINTENANCE_SELECT, findAffectedBookings, maintenanceBlocks } from '../../../_lib/maintenance';
 import { maintenanceSchema } from '@shared/validation';
+import { resourceNamesSql } from '../../../_lib/availability-sql';
 
 // Admin: one maintenance record with the bookings it affects.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request, params }) => {
@@ -15,7 +16,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request, params })
   if (!m) return error('Maintenance record not found', 404);
   const recorded = await env.DB.prepare(
     `SELECT x.booking_id, x.status AS action_status, x.resolution_note, x.notified_at, b.reference, b.status, b.starts_at, b.ends_at,
-            r.name AS resource_name, u.full_name AS customer_name
+            ${resourceNamesSql('b')} AS resource_name, u.full_name AS customer_name
      FROM maintenance_affected_bookings x JOIN bookings b ON b.id = x.booking_id JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id
      WHERE x.maintenance_id = ? ORDER BY b.starts_at`,
   )

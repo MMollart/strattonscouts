@@ -2,7 +2,7 @@ import type { Env } from './http';
 import { newId, now } from './http';
 import { bookingTimeParams, type EmailTemplate } from './email';
 import { sendBookingEmails, type BookingEmail } from './booking-emails';
-import { CONFLICTING_BOOKING_SQL, NOW_SQL, OVERLAPPING_CLOSURE_SQL, closureBinds, effectiveStatusSql } from './availability-sql';
+import { CONFLICTING_BOOKING_SQL, NOW_SQL, OVERLAPPING_CLOSURE_SQL, closureBinds, conflictBinds, effectiveStatusSql, resourceNamesSql } from './availability-sql';
 import { formatGBP } from '@shared/pricing';
 import type { BookingStatus } from '@shared/types';
 
@@ -66,8 +66,8 @@ export async function transitionBooking(
 ): Promise<{ ok: boolean; code?: string; email?: BookingEmail }> {
   const booking = await env.DB.prepare(
     `SELECT b.id, b.reference, b.resource_id, b.starts_at, b.ends_at, ${effectiveStatusSql('b')} AS status, b.total_amount_pence,
-            r.name AS resource_name, u.email AS email, u.full_name AS full_name
-     FROM bookings b JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id
+            ${resourceNamesSql('b')} AS resource_name, u.email AS email, u.full_name AS full_name
+     FROM bookings b JOIN users u ON u.id = b.user_id
      WHERE b.id = ?`,
   )
     .bind(args.bookingId)
@@ -90,24 +90,17 @@ export async function transitionBooking(
   const binds: unknown[] = [args.to, args.actorId, ts, args.bookingId, ...allowedFrom];
 
   if (args.to === 'confirmed') {
-    // Revalidate on approval: the period must still be free of other active
-    // bookings (e.g. after a resource moved under a new parent) and of closures.
-    const closure = await env.DB.prepare(OVERLAPPING_CLOSURE_SQL)
-      .bind(...closureBinds(booking.resource_id), booking.ends_at, booking.starts_at)
-      .first();
-    if (closure) return { ok: false, code: 'closure' };
-    update += ` AND NOT EXISTS (${CONFLICTING_BOOKING_SQL}) AND NOT EXISTS (${OVERLAPPING_CLOSURE_SQL})`;
-    binds.push(
-      booking.resource_id,
-      booking.resource_id,
-      booking.resource_id,
-      booking.ends_at,
-      booking.starts_at,
-      booking.id,
-      ...closureBinds(booking.resource_id),
-      booking.ends_at,
-      booking.starts_at,
-    );
+    // Revalidate on approval: every resource the booking holds must still be
+    // free of other active bookings (e.g. after a resource moved under a new
+    // parent) and of closures.
+    const held = await env.DB.prepare('SELECT resource_id FROM booking_resources WHERE booking_id = ?').bind(booking.id).all<{ resource_id: string }>();
+    const resourceIds = held.results.length ? held.results.map((h) => h.resource_id) : [booking.resource_id];
+    for (const resourceId of resourceIds) {
+      const closure = await env.DB.prepare(OVERLAPPING_CLOSURE_SQL).bind(...closureBinds(resourceId), booking.ends_at, booking.starts_at).first();
+      if (closure) return { ok: false, code: 'closure' };
+      update += ` AND NOT EXISTS (${CONFLICTING_BOOKING_SQL}) AND NOT EXISTS (${OVERLAPPING_CLOSURE_SQL})`;
+      binds.push(...conflictBinds(resourceId, booking.starts_at, booking.ends_at, booking.id), ...closureBinds(resourceId), booking.ends_at, booking.starts_at);
+    }
   }
 
   // The status guard in the UPDATE makes the transition atomic: if another

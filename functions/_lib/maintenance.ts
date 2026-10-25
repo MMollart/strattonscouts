@@ -1,5 +1,5 @@
 import type { Env } from './http';
-import { BLOCKED_SET_SQL, activeBookingSql } from './availability-sql';
+import { BLOCKED_SET_SQL, activeBookingSql, resourceNamesSql } from './availability-sql';
 
 /**
  * Maintenance and faults (Release 3 / FR22). Blocking is done with a
@@ -74,11 +74,12 @@ export interface AffectedBooking {
  */
 export async function findAffectedBookings(env: Env, resourceId: string, startsAt: string, endsAt: string): Promise<AffectedBooking[]> {
   const rows = await env.DB.prepare(
-    `SELECT b.id, b.reference, b.status, b.starts_at, b.ends_at, b.resource_id, r.name AS resource_name,
+    `SELECT b.id, b.reference, b.status, b.starts_at, b.ends_at, b.resource_id, ${resourceNamesSql('b')} AS resource_name,
             u.full_name AS customer_name, o.name AS organisation_name
-     FROM bookings b JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id
+     FROM bookings b JOIN users u ON u.id = b.user_id
      LEFT JOIN organisations o ON o.id = b.organisation_id
-     WHERE ${activeBookingSql('b')} AND b.resource_id IN (${BLOCKED_SET_SQL})
+     WHERE ${activeBookingSql('b')}
+       AND EXISTS (SELECT 1 FROM booking_resources bra WHERE bra.booking_id = b.id AND bra.resource_id IN (${BLOCKED_SET_SQL}))
        AND b.starts_at < ? AND b.ends_at > ?
      ORDER BY b.starts_at`,
   )

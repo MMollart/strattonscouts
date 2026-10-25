@@ -138,8 +138,10 @@ describe('accepting agreements when booking (FR20 §5.4–5.5)', () => {
       env, cookie: customer, body: { resource_id: 'res_main', additional_resource_ids: ['res_kitchen'], ...inDays(6), agreements: sign([hall.versionId, kitchen.versionId]) },
     });
     expect(group.status).toBe(201);
-    const rows = await db.prepare('SELECT b.resource_id, a.version_id FROM agreement_acceptances a JOIN bookings b ON b.id = a.booking_id ORDER BY b.resource_id').all();
-    expect(rows.results).toEqual([{ resource_id: 'res_kitchen', version_id: kitchen.versionId }, { resource_id: 'res_main', version_id: hall.versionId }]);
+    // One booking holding both resources accepts both agreements.
+    const rows = await db.prepare('SELECT a.booking_id, a.version_id FROM agreement_acceptances a ORDER BY a.version_id').all<{ booking_id: string; version_id: string }>();
+    expect(rows.results.map((r) => r.booking_id)).toEqual([group.body.id, group.body.id]);
+    expect(rows.results.map((r) => r.version_id).sort()).toEqual([hall.versionId, kitchen.versionId].sort());
     expect((await db.prepare('SELECT COUNT(*) AS n FROM agreement_signatures').first<{ n: number }>())?.n).toBe(1);
 
     let start = addDays(londonToday(), 40);

@@ -111,6 +111,7 @@ export const PARAM_DESCRIPTION: Record<string, string> = {
   maintenance_period: 'When the maintenance takes place (UK time)',
   maintenance_message: "The administrator's message about the maintenance",
   booking_count: 'How many bookings the email lists',
+  invoice_lines: 'Each resource and its charge, when the booking holds several (blank otherwise)',
 };
 
 const THANKS = 'Thank you,\n{{ venue_name }}';
@@ -280,6 +281,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
       'Booking: {{ resource_name }}',
       WHEN,
       REF,
+      'Items: {{ invoice_lines }}',
       'Price: {{ invoice_list_price }}',
       'Discount: {{ invoice_discount }}',
       'Amount due: {{ booking_cost }}',
@@ -287,7 +289,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     ),
     thanks: THANKS,
     footer: FOOTER,
-    extra_params: ['payment_instructions', 'invoice_number', 'invoice_date', 'invoice_due_date', 'invoice_list_price', 'invoice_discount'],
+    extra_params: ['payment_instructions', 'invoice_number', 'invoice_date', 'invoice_due_date', 'invoice_list_price', 'invoice_discount', 'invoice_lines'],
   },
   {
     key: 'maintenance_notice',

@@ -60,15 +60,46 @@ export const BLOCKED_SET_SQL = `
   SELECT id AS resource_id FROM up UNION SELECT id FROM down UNION SELECT ?`;
 
 /**
- * An active booking on any blocked resource overlapping [startsAt, endsAt).
- * Binds: resourceId x3, endsAt, startsAt, excludeBookingId.
+ * An active booking holding any blocked resource overlapping [startsAt, endsAt).
+ * A booking holds every resource in its booking_resources. Binds: resourceId
+ * x3, endsAt, startsAt, excludeBookingId.
  */
 export const CONFLICTING_BOOKING_SQL = `
-  SELECT 1 FROM bookings ob
+  SELECT 1 FROM bookings ob JOIN booking_resources obr ON obr.booking_id = ob.id
   WHERE ${activeBookingSql('ob')}
-    AND ob.resource_id IN (${BLOCKED_SET_SQL})
+    AND obr.resource_id IN (${BLOCKED_SET_SQL})
     AND ob.starts_at < ? AND ob.ends_at > ?
     AND ob.id <> ?`;
+
+/** Binds for CONFLICTING_BOOKING_SQL. */
+export function conflictBinds(resourceId: string, startsAt: string, endsAt: string, excludeBookingId: string): string[] {
+  return [resourceId, resourceId, resourceId, endsAt, startsAt, excludeBookingId];
+}
+
+/**
+ * The names of every resource a booking holds, in name order, as one string
+ * ("Kitchen, Main Hall"), for showing a booking. `alias` is the bookings alias.
+ */
+export function resourceNamesSql(alias: string): string {
+  return `(SELECT group_concat(name, ', ') FROM (
+    SELECT rn.name FROM booking_resources brn JOIN resources rn ON rn.id = brn.resource_id
+    WHERE brn.booking_id = ${alias}.id ORDER BY rn.name))`;
+}
+
+/**
+ * The names of the resources in a JSON array column of resource ids, falling
+ * back to a single-id column (change requests made before migration 0024).
+ */
+export function resourceListNamesSql(idsColumn: string, singleColumn: string): string {
+  return `(SELECT group_concat(name, ', ') FROM (
+    SELECT rl.name FROM resources rl WHERE rl.id IN (SELECT value FROM json_each(COALESCE(${idsColumn}, json_array(${singleColumn}))))
+    ORDER BY rl.name))`;
+}
+
+/** A condition: the booking holds this resource (bind: resourceId). */
+export function holdsResourceSql(alias: string): string {
+  return `EXISTS (SELECT 1 FROM booking_resources brh WHERE brh.booking_id = ${alias}.id AND brh.resource_id = ?)`;
+}
 
 /**
  * Closures that make a resource unavailable: those on the resource itself, its
@@ -120,10 +151,10 @@ export async function loadBusyPeriods(
   type Row = { starts_at: string; ends_at: string; resource_id: string; resource_name: string };
   const [bookings, closures, ancestors] = await env.DB.batch<Row>([
     env.DB.prepare(
-      `SELECT b.starts_at, b.ends_at, b.resource_id, r.name AS resource_name
-       FROM bookings b JOIN resources r ON r.id = b.resource_id
+      `SELECT b.starts_at, b.ends_at, br.resource_id, r.name AS resource_name
+       FROM bookings b JOIN booking_resources br ON br.booking_id = b.id JOIN resources r ON r.id = br.resource_id
        WHERE ${activeBookingSql('b')}
-         AND b.resource_id IN (${BLOCKED_SET_SQL})
+         AND br.resource_id IN (${BLOCKED_SET_SQL})
          AND b.starts_at < ? AND b.ends_at > ?
        ORDER BY b.starts_at`,
     ).bind(resourceId, resourceId, resourceId, to, from),

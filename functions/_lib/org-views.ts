@@ -1,6 +1,6 @@
 import type { Env } from './http';
 import { decryptAtRest } from './crypto';
-import { effectiveStatusSql } from './availability-sql';
+import { effectiveStatusSql, resourceNamesSql } from './availability-sql';
 
 /** Organisation details plus members (and invitations when requested). */
 export async function loadOrganisation(env: Env, id: string, opts: { includeInvitations: boolean }) {
@@ -45,7 +45,7 @@ export async function loadOrganisation(env: Env, id: string, opts: { includeInvi
 /** Bookings that belong to an organisation, newest first. */
 export async function loadOrganisationBookings(env: Env, organisationId: string) {
   const rows = await env.DB.prepare(
-    `SELECT b.id, b.reference, b.resource_id, r.name AS resource_name, b.starts_at, b.ends_at, ${effectiveStatusSql('b')} AS status, b.expires_at,
+    `SELECT b.id, b.reference, b.resource_id, ${resourceNamesSql('b')} AS resource_name, b.starts_at, b.ends_at, ${effectiveStatusSql('b')} AS status, b.expires_at,
             b.total_amount_pence, b.created_at, u.full_name AS booked_by
      FROM bookings b JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id
      WHERE b.organisation_id = ? ORDER BY b.starts_at DESC LIMIT 500`,

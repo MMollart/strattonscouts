@@ -4,7 +4,7 @@ import { can, loadAccess } from './auth';
 import { randomToken, sha256Hex } from './crypto';
 import { getSetting } from './settings';
 import { getMembershipRole } from './organisations';
-import { activeBookingSql } from './availability-sql';
+import { activeBookingSql, resourceNamesSql } from './availability-sql';
 import { bookingCalendarEvent, buildCalendar, type BookingCalendarInput } from '@shared/ical';
 
 export type FeedKind = 'user' | 'organisation' | 'admin';
@@ -144,7 +144,9 @@ export async function renderFeed(env: Env, feed: CalendarFeedRow, venue: Venue):
     const chosen = parseResourceIds(feed.resource_ids);
     if (chosen) {
       const ids = await withDescendants(env, chosen);
-      where = ids.length ? `b.resource_id IN (${ids.map(() => '?').join(', ')})` : '0';
+      where = ids.length
+        ? `EXISTS (SELECT 1 FROM booking_resources brc WHERE brc.booking_id = b.id AND brc.resource_id IN (${ids.map(() => '?').join(', ')}))`
+        : '0';
       binds.push(...ids);
     } else {
       where = '1';
@@ -152,9 +154,8 @@ export async function renderFeed(env: Env, feed: CalendarFeedRow, venue: Venue):
   }
   const rows = await env.DB.prepare(
     `SELECT b.id, b.reference, b.starts_at, b.ends_at, b.status, b.updated_at,
-            r.name AS resource_name, o.name AS organisation_name, u.full_name AS customer_name
+            ${resourceNamesSql('b')} AS resource_name, o.name AS organisation_name, u.full_name AS customer_name
      FROM bookings b
-     JOIN resources r ON r.id = b.resource_id
      JOIN users u ON u.id = b.user_id
      LEFT JOIN organisations o ON o.id = b.organisation_id
      WHERE ${activeBookingSql('b')} AND b.ends_at >= ? AND ${where}

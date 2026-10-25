@@ -2,7 +2,7 @@ import type { Env } from '../../_lib/http';
 import { error, json } from '../../_lib/http';
 import { getAuthUser } from '../../_lib/auth';
 import { bookingAccess } from '../../_lib/booking-access';
-import { effectiveStatusSql } from '../../_lib/availability-sql';
+import { effectiveStatusSql, resourceNamesSql } from '../../_lib/availability-sql';
 
 // A recurring series and all its occurrences, for whoever may see its bookings.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request, params }) => {
@@ -20,7 +20,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request, params })
   if (!access.canView) return error('Not authorised', 403);
 
   const occurrences = await env.DB.prepare(
-    `SELECT b.id, b.reference, b.resource_id, r.name AS resource_name, b.starts_at, b.ends_at, ${effectiveStatusSql('b')} AS status, b.total_amount_pence
+    `SELECT b.id, b.reference, b.resource_id, ${resourceNamesSql('b')} AS resource_name, b.starts_at, b.ends_at, ${effectiveStatusSql('b')} AS status, b.total_amount_pence
      FROM bookings b JOIN resources r ON r.id = b.resource_id WHERE b.series_id = ? ORDER BY b.starts_at`,
   )
     .bind(String(params.id))

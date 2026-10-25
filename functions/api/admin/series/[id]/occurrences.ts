@@ -3,7 +3,7 @@ import { error, json } from '../../../../_lib/http';
 import { can, requirePermission } from '../../../../_lib/auth';
 import { parseBody } from '../../../../_lib/request';
 import { activeBookingSql } from '../../../../_lib/availability-sql';
-import { amendStatements, planAmendments, type AmendTarget } from '../../../../_lib/amend';
+import { amendStatements, heldResources, loadHeldResources, planAmendments, type AmendTarget } from '../../../../_lib/amend';
 import { guardedBatch } from '../../../../_lib/txn';
 import { bookingTimeParams, sendEmail } from '../../../../_lib/email';
 import { seriesDateText } from '../../../../_lib/recurring';
@@ -43,11 +43,13 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request, params })
   if (!targets.results.length) return error('There are no active occurrences to change', 400);
 
   const overnight = input.end_time <= input.start_time;
+  const held = await loadHeldResources(env, targets.results.map((t) => t.id));
   const changes = targets.results.map((t) => {
     const date = toLondon(t.starts_at).date;
+    const target = { ...t, resource_ids: held.get(t.id) };
     return {
-      target: t,
-      resourceId: input.resource_id ?? t.resource_id,
+      target,
+      resourceIds: input.resource_id ? [input.resource_id] : heldResources(target),
       startsAt: fromLondon(date, input.start_time),
       endsAt: fromLondon(overnight ? addDays(date, 1) : date, input.end_time),
     };
@@ -62,7 +64,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request, params })
     `SELECT s.reference, r.name AS resource_name, u.email, u.full_name FROM recurrence_series s
      JOIN users u ON u.id = s.user_id JOIN resources r ON r.id = ? WHERE s.id = ?`,
   )
-    .bind(plan.planned[0].resourceId, id)
+    .bind(plan.planned[0].resourceIds[0], id)
     .first<{ reference: string; resource_name: string; email: string; full_name: string }>();
   if (series) {
     const first = plan.planned[0];

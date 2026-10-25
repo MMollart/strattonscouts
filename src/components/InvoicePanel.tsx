@@ -12,6 +12,8 @@ interface Invoice {
   due_date: string;
   last_sent_at: string;
   send_count: number;
+  /** Each resource's charge, when the booking holds several. */
+  lines?: { resource_id: string; resource_name: string; amount_pence: number }[];
 }
 
 interface Props {
@@ -59,6 +61,9 @@ export function InvoicePanel({ booking }: Props) {
                 Issued {formatLondon(i.issued_at, { dateStyle: 'medium' })}, due {formatLondon(`${i.due_date}T12:00:00Z`, { dateStyle: 'medium' })}
                 {i.send_count > 1 ? `, sent ${i.send_count} times (last ${formatLondon(i.last_sent_at)})` : ''}
               </span>
+              {i.lines && i.lines.length > 1 && (
+                <span className="w-full text-xs text-gray-500">{i.lines.map((l) => `${l.resource_name} ${formatGBP(l.amount_pence)}`).join(' · ')}</span>
+              )}
             </li>
           ))}
         </ul>

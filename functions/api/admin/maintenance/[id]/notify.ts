@@ -7,6 +7,7 @@ import { bookingTimeParams, sendEmail } from '../../../../_lib/email';
 import { findAffectedBookings } from '../../../../_lib/maintenance';
 import { formatLondon } from '@shared/londonTime';
 import { maintenanceNotifySchema } from '@shared/validation';
+import { resourceNamesSql } from '../../../../_lib/availability-sql';
 
 /**
  * Admin: tell the customers of affected bookings about maintenance (FR22
@@ -35,7 +36,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
   if (!chosen.length) return error('No bookings are affected by this maintenance', 400);
 
   const rows = await env.DB.prepare(
-    `SELECT b.id, b.reference, b.starts_at, b.ends_at, b.status, u.email, u.full_name, r.name AS resource_name, o.name AS organisation_name
+    `SELECT b.id, b.reference, b.starts_at, b.ends_at, b.status, u.email, u.full_name, ${resourceNamesSql('b')} AS resource_name, o.name AS organisation_name
      FROM bookings b JOIN users u ON u.id = b.user_id JOIN resources r ON r.id = b.resource_id LEFT JOIN organisations o ON o.id = b.organisation_id
      WHERE b.id IN (${chosen.map(() => '?').join(', ')})`,
   )

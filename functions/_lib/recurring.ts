@@ -151,7 +151,10 @@ export async function createSeries(env: Env, req: SeriesRequest, excludeDates: s
   for (const d of drafts) statements.push(bookingInsertStatements(env, d)[0]);
   statements.push(
     abortIf(env, '(SELECT COUNT(*) FROM bookings WHERE series_id = ?) <> ?', seriesId, drafts.length),
-    env.DB.prepare('INSERT INTO booking_resources (booking_id, resource_id) SELECT id, resource_id FROM bookings WHERE series_id = ?').bind(seriesId),
+    env.DB.prepare(
+      `INSERT OR REPLACE INTO booking_resources (booking_id, resource_id, total_amount_pence, base_amount_pence, discount_pence, discount_label, price_breakdown)
+       SELECT id, resource_id, total_amount_pence, base_amount_pence, discount_pence, discount_label, price_breakdown FROM bookings WHERE series_id = ?`,
+    ).bind(seriesId),
     env.DB.prepare(
       `INSERT INTO booking_events (id, booking_id, event_type, actor_id, detail, created_at)
        SELECT 'bev_' || lower(hex(randomblob(16))), id, ?, ?, ?, ? FROM bookings WHERE series_id = ?`,
