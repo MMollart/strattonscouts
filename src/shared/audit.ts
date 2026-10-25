@@ -40,6 +40,7 @@ const VERB_LABELS: Record<string, string> = {
   amendment_rejected: 'change rejected',
   amendment_withdrawn: 'change withdrawn',
   expiry_changed: 'hold expiry changed',
+  invoice_sent: 'invoice sent',
   role_changed: 'administrator role changed',
   bootstrapped: 'first Super Admin created',
   password_reset: 'password reset by an administrator',

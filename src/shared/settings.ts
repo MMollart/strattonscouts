@@ -30,7 +30,11 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   {
     key: 'payment_instructions', label: 'Payment instructions', type: 'text',
     default: 'Please pay by bank transfer. Contact us for the account details.',
-    help: 'Used in payment reminder emails as {{ payment_instructions }}.',
+    help: 'Used in payment reminder and invoice emails as {{ payment_instructions }}.',
+  },
+  {
+    key: 'invoice_due_days', label: 'Invoice payment terms (days)', type: 'integer', default: '14', min: 0, max: 120,
+    help: 'How many days after an invoice is issued its payment is due. 0 means due on receipt.',
   },
   { key: 'contact_email', label: 'Contact email', type: 'email', default: 'bookings@strattonscouts.example', help: 'Shown to customers in emails as {{ contact_email }}.' },
   {
