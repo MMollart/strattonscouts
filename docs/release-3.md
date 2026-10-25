@@ -12,6 +12,7 @@ apply (`npm run db:migrate:remote`) before the code that uses it is deployed.
 | `0019_agreements.sql` | FR20 Booking agreements & digital acceptance |
 | `0020_financial_reporting.sql` | FR10 Financial reporting |
 | `0021_calendar_feeds.sql` | FR17 External calendar integration |
+| `0023_invoices.sql` | Invoicing the hirer |
 
 ## FR11 – Booking & administration audit history
 
@@ -398,3 +399,28 @@ and "Add to Google Calendar" buttons.
   they are stored and cancelled.
 - *Migration 0021* adds a table, the permission and nothing else, so it is
   safe to run before the code deploys.
+
+## Invoicing the hirer
+
+An administrator with `bookings.manage` can email the hirer an invoice from
+the booking page (the **Invoices** panel), for a confirmed booking that has a
+charge. When the booking is for an organisation, the invoice can go to the
+organisation's contact email or to the person who booked. Payment itself is
+still out of scope; the email carries the *Payment instructions* setting.
+
+- *Numbers.* Each invoice has a sequential number across all bookings
+  (`INV-000001`, ...), worked out inside the INSERT so two sends at once can't
+  share one.
+- *Snapshot.* An invoice keeps the amount, list price and discount it charged.
+  Sending again while the booking's price is unchanged resends the same
+  invoice (same number and due date); after an amendment changes the price, the
+  next send issues a new invoice. Earlier invoices stay listed.
+- *Due date.* Issue date plus the *Invoice payment terms (days)* setting
+  (default 14; 0 means due on receipt), in UK dates.
+- *Email.* The **Invoice** template (`booking_invoice`) is editable and can be
+  switched off in Email templates; while it is off no invoice is issued. Each
+  send is in the email history, and failed sends are retried like any other.
+- *Audit.* Every send writes a `booking.invoice_sent` booking event, which
+  reaches the audit history with the invoice number and amount.
+- *Migration 0023* adds the `invoices` table only, so it is safe to apply
+  before the code is deployed.
