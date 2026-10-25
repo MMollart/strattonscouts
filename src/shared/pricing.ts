@@ -118,6 +118,34 @@ export interface PriceBreakdown {
   pricing_rate_id: string | null;
   pricing_discount_id: string | null;
   organisation_pricing_id: string | null;
+  /** For a booking of several resources: each resource's own price. The figures above are the whole booking's. */
+  lines?: PriceLine[];
+}
+
+/** One resource's price within a booking of several. */
+export type PriceLine = Omit<PriceBreakdown, 'lines'> & { resource_id: string; resource_name: string };
+
+/**
+ * The price of a booking of several resources: the resources' prices added
+ * up, keeping each one as a line. A single resource's price is returned as it is.
+ */
+export function combinePrices(lines: PriceLine[]): PriceBreakdown {
+  if (lines.length === 1) {
+    const only: Partial<PriceLine> = { ...lines[0] };
+    delete only.resource_id;
+    delete only.resource_name;
+    return only as PriceBreakdown;
+  }
+  const sum = (f: (l: PriceLine) => number) => lines.reduce((n, l) => n + f(l), 0);
+  const labels = [...new Set(lines.filter((l) => l.discount_pence > 0).map((l) => l.discount_label ?? 'Discount'))];
+  return {
+    ...lines[0],
+    base_amount_pence: sum((l) => l.base_amount_pence),
+    discount_pence: sum((l) => l.discount_pence),
+    discount_label: labels.join(', ') || null,
+    total_pence: sum((l) => l.total_pence),
+    lines,
+  };
 }
 
 /** Billable quantity for a pricing model. */

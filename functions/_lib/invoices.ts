@@ -5,13 +5,22 @@ import { bookingTimeParams, loadTemplate, sendEmail } from './email';
 import { getIntSetting } from './settings';
 import { addDays, londonToday } from '@shared/londonTime';
 import { formatGBP } from '@shared/pricing';
+import { resourceNamesSql } from './availability-sql';
 
 /**
- * Invoices (migration 0023). An administrator sends the hirer an invoice for
- * a confirmed, chargeable booking. The invoice keeps a snapshot of the price;
- * sending again while the booking's price is unchanged resends the same
- * invoice, and a changed price (after an amendment) issues a new number.
+ * Invoices (migrations 0023, 0024). An administrator sends the hirer an
+ * invoice for a confirmed, chargeable booking, with a line for each resource
+ * it holds. The invoice keeps a snapshot of the price; sending again while
+ * the booking's price is unchanged resends the same invoice, and a changed
+ * price (after an amendment) issues a new number.
  */
+
+/** One resource's charge on an invoice. */
+export interface InvoiceLine {
+  resource_id: string;
+  resource_name: string;
+  amount_pence: number;
+}
 
 export interface Invoice {
   id: string;
@@ -25,6 +34,7 @@ export interface Invoice {
   due_date: string;
   last_sent_at: string;
   send_count: number;
+  lines: InvoiceLine[];
 }
 
 export type InvoiceRecipient = 'customer' | 'organisation';
@@ -38,11 +48,22 @@ function ukDate(value: string): string {
 
 export async function listInvoices(env: Env, bookingId: string): Promise<Invoice[]> {
   const rows = await env.DB.prepare(
-    `SELECT id, invoice_number, booking_id, amount_pence, base_amount_pence, discount_pence, discount_label, issued_at, due_date, last_sent_at, send_count
+    `SELECT id, invoice_number, booking_id, amount_pence, base_amount_pence, discount_pence, discount_label, issued_at, due_date, last_sent_at, send_count, lines
      FROM invoices WHERE booking_id = ? ORDER BY sequence DESC`,
   )
     .bind(bookingId)
-    .all<Invoice>();
+    .all<Omit<Invoice, 'lines'> & { lines: string | null }>();
+  return rows.results.map((r) => ({ ...r, lines: r.lines ? (JSON.parse(r.lines) as InvoiceLine[]) : [] }));
+}
+
+/** What each resource of a booking charges, for its invoice. */
+async function bookingLines(env: Env, bookingId: string): Promise<InvoiceLine[]> {
+  const rows = await env.DB.prepare(
+    `SELECT br.resource_id, r.name AS resource_name, br.total_amount_pence AS amount_pence
+     FROM booking_resources br JOIN resources r ON r.id = br.resource_id WHERE br.booking_id = ? ORDER BY r.name`,
+  )
+    .bind(bookingId)
+    .all<InvoiceLine>();
   return rows.results;
 }
 
@@ -54,8 +75,8 @@ export async function sendInvoice(env: Env, user: AuthUser, bookingId: string, r
   const b = await env.DB.prepare(
     `SELECT b.id, b.reference, b.status, b.starts_at, b.ends_at, b.total_amount_pence,
             COALESCE(b.base_amount_pence, b.total_amount_pence) AS base_amount_pence, COALESCE(b.discount_pence, 0) AS discount_pence, b.discount_label,
-            r.name AS resource_name, u.email, u.full_name, o.name AS organisation_name, o.contact_email AS organisation_email
-     FROM bookings b JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id
+            ${resourceNamesSql('b')} AS resource_name, u.email, u.full_name, o.name AS organisation_name, o.contact_email AS organisation_email
+     FROM bookings b JOIN users u ON u.id = b.user_id
      LEFT JOIN organisations o ON o.id = b.organisation_id WHERE b.id = ?`,
   )
     .bind(bookingId)
@@ -74,12 +95,17 @@ export async function sendInvoice(env: Env, user: AuthUser, bookingId: string, r
   }
 
   const ts = now();
+  const lines = await bookingLines(env, b.id);
   const latest = (await listInvoices(env, b.id))[0];
+  const sameLines = (a: InvoiceLine[]) =>
+    a.length === lines.length && a.every((l, i) => l.resource_id === lines[i].resource_id && l.amount_pence === lines[i].amount_pence);
   const unchanged =
     latest &&
     latest.amount_pence === b.total_amount_pence &&
     latest.base_amount_pence === b.base_amount_pence &&
-    latest.discount_pence === b.discount_pence;
+    latest.discount_pence === b.discount_pence &&
+    // Invoices from before migration 0024 have no lines; their single resource is unchanged if the price is.
+    (latest.lines.length ? sameLines(latest.lines) : lines.length <= 1);
 
   let invoice: Invoice;
   if (unchanged) {
@@ -95,10 +121,10 @@ export async function sendInvoice(env: Env, user: AuthUser, bookingId: string, r
     // cannot take the same one (the UNIQUE constraint refuses the loser).
     const [inserted] = await env.DB.batch<{ invoice_number: string }>([
       env.DB.prepare(
-        `INSERT INTO invoices (id, sequence, invoice_number, booking_id, amount_pence, base_amount_pence, discount_pence, discount_label, issued_at, due_date, issued_by, last_sent_at, send_count)
-         SELECT ?, n, 'INV-' || printf('%06d', n), ?, ?, ?, ?, ?, ?, ?, ?, ?, 1 FROM (SELECT COALESCE(MAX(sequence), 0) + 1 AS n FROM invoices)
+        `INSERT INTO invoices (id, sequence, invoice_number, booking_id, amount_pence, base_amount_pence, discount_pence, discount_label, issued_at, due_date, issued_by, last_sent_at, send_count, lines)
+         SELECT ?, n, 'INV-' || printf('%06d', n), ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ? FROM (SELECT COALESCE(MAX(sequence), 0) + 1 AS n FROM invoices)
          RETURNING invoice_number`,
-      ).bind(id, b.id, b.total_amount_pence, b.base_amount_pence, b.discount_pence, b.discount_label, ts, dueDate, user.id, ts),
+      ).bind(id, b.id, b.total_amount_pence, b.base_amount_pence, b.discount_pence, b.discount_label, ts, dueDate, user.id, ts, JSON.stringify(lines)),
       env.DB.prepare(
         `INSERT INTO booking_events (id, booking_id, event_type, actor_id, detail, created_at)
          SELECT ?, ?, 'invoice_sent', ?, json_object('to', json_object('invoice_number', invoice_number, 'amount_pence', amount_pence, 'due_date', due_date)), ?
@@ -117,6 +143,7 @@ export async function sendInvoice(env: Env, user: AuthUser, bookingId: string, r
       due_date: dueDate,
       last_sent_at: ts,
       send_count: 1,
+      lines,
     };
   }
 
@@ -139,6 +166,8 @@ export async function sendInvoice(env: Env, user: AuthUser, bookingId: string, r
       invoice_due_date: ukDate(invoice.due_date),
       invoice_list_price: discounted ? formatGBP(invoice.base_amount_pence) : '',
       invoice_discount: discounted ? `−${formatGBP(invoice.discount_pence)} (${invoice.discount_label ?? 'Discount'})` : '',
+      // One line per resource when the booking holds several.
+      invoice_lines: invoice.lines.length > 1 ? invoice.lines.map((l) => `${l.resource_name} ${formatGBP(l.amount_pence)}`).join(' · ') : '',
     },
   });
   // The template was checked above; it can only be off here if switched off mid-send.

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useApi } from '../lib/useApi';
-import { api, ApiError } from '../lib/api';
 import { Spinner, ErrorState } from '../components/ui';
 import { useAuth } from '../lib/auth';
-import { addDays, londonToday, toLondon } from '@shared/londonTime';
+import { addDays, formatLondon, londonToday, toLondon } from '@shared/londonTime';
+import { useBasket } from '../lib/basket';
+import { hierarchyRelation } from '@shared/hierarchy';
 import {
   AvailabilityNotice,
   BookingWindowFields,
@@ -16,9 +17,7 @@ import type { MyOrganisation } from './Organisations';
 import { useQuote } from '../lib/useQuote';
 import { PriceSummary } from '../components/PriceSummary';
 import { RecurringBooking } from '../components/RecurringBooking';
-import { ExtraResources, type ExtraStatus } from '../components/ExtraResources';
-import { AgreementAcceptance, useRequiredAgreements, type AcceptanceValue, type RequiredAgreement } from '../components/AgreementAcceptance';
-import { formatGBP } from '@shared/pricing';
+import { useRequiredAgreements } from '../components/AgreementAcceptance';
 
 interface ResourceDetail {
   id: string;
@@ -35,14 +34,20 @@ interface ResourceDetail {
 
 interface Category { id: string; name: string; label: string; }
 
-function initialWindow(params: URLSearchParams): BookingWindow {
+interface ResourceOpt { id: string; name: string; ancestor_ids: string[] }
+
+function toWindow(start: string, end: string): BookingWindow {
+  const s = toLondon(start);
+  const e = toLondon(end);
+  return { startDate: s.date, startTime: s.time, endDate: e.date, endTime: e.time };
+}
+
+/** A time picked on the calendar, else the time of the booking being put together, else today. */
+function initialWindow(params: URLSearchParams, basketWindow: { startsAt: string; endsAt: string } | null): BookingWindow {
   const start = params.get('start');
   const end = params.get('end');
-  if (start && end && !Number.isNaN(Date.parse(start)) && !Number.isNaN(Date.parse(end))) {
-    const s = toLondon(start);
-    const e = toLondon(end);
-    return { startDate: s.date, startTime: s.time, endDate: e.date, endTime: e.time };
-  }
+  if (start && end && !Number.isNaN(Date.parse(start)) && !Number.isNaN(Date.parse(end))) return toWindow(start, end);
+  if (basketWindow) return toWindow(basketWindow.startsAt, basketWindow.endsAt);
   const today = londonToday();
   return { startDate: today, startTime: '10:00', endDate: today, endTime: '12:00' };
 }
@@ -50,24 +55,19 @@ function initialWindow(params: URLSearchParams): BookingWindow {
 export default function BookResource() {
   const { slug } = useParams();
   const [params] = useSearchParams();
-  const navigate = useNavigate();
   const { user } = useAuth();
+  const basket = useBasket();
+  const { data: allResources } = useApi<ResourceOpt[]>('/resources');
   const { data: resource, loading, error } = useApi<ResourceDetail>(`/resources/${slug}`, [slug]);
   const { data: categories } = useApi<Category[]>('/categories');
   const { data: organisations } = useApi<MyOrganisation[]>('/organisations');
   const [organisationId, setOrganisationId] = useState<string>(() => params.get('organisation') ?? '');
   const organisation = organisations?.find((o) => o.id === organisationId);
 
-  const [win, setWin] = useState<BookingWindow>(() => initialWindow(params));
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [provisional, setProvisional] = useState(false);
+  const [win, setWin] = useState<BookingWindow>(() => initialWindow(params, basket.resourceIds.length ? basket.window : null));
   const [repeat, setRepeat] = useState(false);
-  const [extras, setExtras] = useState<string[]>([]);
-  const [extraStatus, setExtraStatus] = useState<Record<string, ExtraStatus | null>>({});
-  const [acceptance, setAcceptance] = useState<AcceptanceValue | null>(null);
-  const { agreements, setAgreements } = useRequiredAgreements(resource ? [resource.id, ...(repeat ? [] : extras)] : []);
-  const agreed = !!agreements && (agreements.length === 0 || !!acceptance);
+  const [added, setAdded] = useState(false);
+  const { agreements } = useRequiredAgreements(resource && repeat ? [resource.id] : []);
 
   const myCategory = categories?.find((c) => c.id === (organisation ? organisation.pricing_category_id : user?.pricing_category_id));
   const iso = useMemo(() => windowToIso(win), [win]);
@@ -75,13 +75,13 @@ export default function BookResource() {
 
   const { quote, loading: quoting, error: quoteError } = useQuote({ resourceId: resource?.id, window: iso, organisationId: organisation?.id ?? null });
 
-  useEffect(() => setSubmitError(null), [win]);
+  useEffect(() => setAdded(false), [win]);
 
-  // Unless a time was picked on the calendar, start from the resource's usual
-  // arrival and departure times, ending the next day (or after its minimum
-  // nights) for nightly resources such as Camping.
+  // Unless a time was picked on the calendar or a booking is under way, start
+  // from the resource's usual arrival and departure times, ending the next day
+  // (or after its minimum nights) for nightly resources such as Camping.
   useEffect(() => {
-    if (!resource || (params.get('start') && params.get('end'))) return;
+    if (!resource || (params.get('start') && params.get('end')) || basket.resourceIds.length) return;
     const nights = resource.pricing_model === 'nightly' ? Math.max(1, resource.min_nights ?? 1) : 0;
     setWin((w) => ({
       ...w,
@@ -92,40 +92,27 @@ export default function BookResource() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resource?.id]);
 
-  async function submit() {
-    if (!resource) return;
-    if (!iso) {
-      setSubmitError('The end must be after the start');
-      return;
-    }
-    setSubmitting(true);
-    setSubmitError(null);
-    try {
-      const booking = await api.post<{ id: string }>('/bookings', {
-        resource_id: resource.id,
-        ...(extras.length ? { additional_resource_ids: extras } : {}),
-        starts_at: iso.startsAt,
-        ends_at: iso.endsAt,
-        organisation_id: organisation?.id ?? null,
-        provisional,
-        agreements: agreements?.length ? acceptance : null,
-      });
-      navigate(`/bookings/${booking.id}`);
-    } catch (e) {
-      // A newer version of an agreement came into effect: show it to accept.
-      if (e instanceof ApiError && e.code === 'agreements_required') setAgreements((e.details as { required: RequiredAgreement[] }).required);
-      setSubmitError(e instanceof ApiError ? e.message : 'Could not create booking');
-    } finally {
-      setSubmitting(false);
-    }
+  const inBasket = !!resource && basket.resourceIds.includes(resource.id);
+  const others = basket.resourceIds.filter((id) => id !== resource?.id);
+  const byId = new Map((allResources ?? []).map((r) => [r.id, r]));
+  const nameOf = (id: string) => byId.get(id)?.name ?? 'a resource';
+  // A resource cannot be booked with one it is part of (a hall and the Whole Venue).
+  const clash = resource
+    ? others.map((id) => [id, hierarchyRelation(resource.id, id, (x) => byId.get(x)?.ancestor_ids ?? [])] as const).find(([, rel]) => rel)
+    : undefined;
+  const timeChanges = !!iso && others.length > 0 && !!basket.window && (basket.window.startsAt !== iso.startsAt || basket.window.endsAt !== iso.endsAt);
+  const blocked = ['conflict', 'closure', 'inactive', 'restricted'].includes(availability.status);
+
+  function addToBooking() {
+    if (!resource || !iso) return;
+    basket.add(resource.id, iso);
+    setAdded(true);
   }
 
   if (loading) return <Spinner />;
   if (error) return <ErrorState message={error} />;
   if (!resource) return null;
 
-  const extrasReady = extras.every((id) => extraStatus[id]?.ok);
-  const groupTotal = quote && extrasReady ? extras.reduce((sum, id) => sum + (extraStatus[id]?.totalPence ?? 0), quote.total_pence) : null;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -170,42 +157,42 @@ export default function BookResource() {
         {repeat ? (
           <RecurringBooking resourceId={resource.id} resourceName={resource.name} organisationId={organisation?.id ?? null} window={win} agreements={agreements} />
         ) : (
-        <>
-        <ExtraResources
-          mainResourceId={resource.id}
-          window={iso}
-          organisationId={organisation?.id ?? null}
-          selected={extras}
-          onChange={setExtras}
-          onStatus={(id, st) => setExtraStatus((prev) => ({ ...prev, [id]: st }))}
-        />
-        {extras.length > 0 && (
-          <p className="flex justify-between rounded-xl bg-scout-off-white p-4 font-bold">
-            <span>Total for {extras.length + 1} resources</span>
-            <span>{groupTotal === null ? '—' : formatGBP(groupTotal)}</span>
+        <div className="space-y-3 border-t border-gray-100 pt-4">
+          {others.length > 0 && basket.window && (
+            <p className="text-sm text-gray-600">
+              Your booking so far: {others.map(nameOf).join(', ')}, {formatLondon(basket.window.startsAt)} to {formatLondon(basket.window.endsAt)}.
+            </p>
+          )}
+          {timeChanges && (
+            <p className="rounded-lg bg-scout-yellow/20 px-3 py-2 text-sm text-yellow-900">
+              This is a different time from the rest of your booking. Adding it moves everything in your booking to this time; you can check each
+              resource at checkout.
+            </p>
+          )}
+          {clash && (
+            <p className="rounded-lg bg-scout-red/10 px-3 py-2 text-sm text-scout-red" role="alert">
+              {clash[1] === 'parent'
+                ? `${resource.name} is part of ${nameOf(clash[0])}, which is already in your booking.`
+                : `${resource.name} includes ${nameOf(clash[0])}, which is already in your booking. Remove it at checkout to book this instead.`}
+            </p>
+          )}
+          {added || (inBasket && !timeChanges) ? (
+            <div className="rounded-xl bg-scout-green/10 p-4" role="status">
+              <p className="font-bold text-scout-green">{resource.name} is in your booking.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link to="/resources" className="btn-secondary">Add another resource</Link>
+                <Link to="/checkout" className="btn-primary">Review and book ({basket.resourceIds.length})</Link>
+              </div>
+            </div>
+          ) : (
+            <button className="btn-primary w-full" onClick={addToBooking} disabled={!iso || !quote || blocked || !!clash}>
+              {inBasket ? 'Update the time in my booking' : 'Add to booking'}
+            </button>
+          )}
+          <p className="text-xs text-gray-500">
+            Add every resource you need for this time, then review and send them together as one booking.
           </p>
-        )}
-
-        <label className="flex items-start gap-2">
-          <input type="checkbox" className="mt-1" checked={provisional} onChange={(e) => setProvisional(e.target.checked)} />
-          <span>
-            <span className="font-bold">Hold this time provisionally</span>
-            <span className="block text-sm text-gray-600">
-              We reserve it for up to {resource.provisional_hold_hours} hours (never past the start of the booking). It is released
-              automatically unless an administrator confirms it in that time.
-            </span>
-          </span>
-        </label>
-
-        {agreements && <AgreementAcceptance agreements={agreements} onChange={setAcceptance} idPrefix="book-agr" />}
-
-        {submitError && <ErrorState message={submitError} />}
-
-        <button className="btn-primary w-full" onClick={submit} disabled={submitting || !quote || !extrasReady || !agreed || ['conflict', 'closure', 'inactive', 'restricted'].includes(availability.status)}>
-          {submitting ? 'Submitting…' : provisional ? 'Hold provisionally' : resource.requires_approval ? 'Request booking' : 'Confirm booking'}
-          {extras.length > 0 && !submitting ? ` (${extras.length + 1} resources)` : ''}
-        </button>
-        </>
+        </div>
         )}
       </div>
     </div>

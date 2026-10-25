@@ -2,7 +2,7 @@ import type { Env } from '../../_lib/http';
 import { error, json } from '../../_lib/http';
 import { getAuthUser } from '../../_lib/auth';
 import { bookingAccess } from '../../_lib/booking-access';
-import { effectiveStatusSql } from '../../_lib/availability-sql';
+import { effectiveStatusSql, resourceNamesSql } from '../../_lib/availability-sql';
 
 // View a single booking: its customer, members of its organisation, or admins.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request, params }) => {
@@ -11,7 +11,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request, params })
   const id = String(params.id);
 
   const booking = await env.DB.prepare(
-    `SELECT b.*, ${effectiveStatusSql('b')} AS status, r.name AS resource_name, u.full_name AS customer_name, u.email AS customer_email,
+    `SELECT b.*, ${effectiveStatusSql('b')} AS status, ${resourceNamesSql('b')} AS resource_name, u.full_name AS customer_name, u.email AS customer_email,
             o.name AS organisation_name
      FROM bookings b JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id
      LEFT JOIN organisations o ON o.id = b.organisation_id
@@ -37,18 +37,15 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request, params })
       ).results
     : undefined;
 
-  // The other resources booked in the same request (same customer, same time).
-  const group = booking.group_id
-    ? (
-        await env.DB.prepare(
-          `SELECT b.id, b.reference, r.name AS resource_name, ${effectiveStatusSql('b')} AS status, b.total_amount_pence
-           FROM bookings b JOIN resources r ON r.id = b.resource_id
-           WHERE b.group_id = ? AND b.user_id = ? ORDER BY r.name`,
-        )
-          .bind(booking.group_id, booking.user_id)
-          .all()
-      ).results
-    : undefined;
+  // Every resource the booking holds, with what each charges.
+  const resources = (
+    await env.DB.prepare(
+      `SELECT br.resource_id, r.name AS resource_name, r.slug AS resource_slug, br.total_amount_pence, br.base_amount_pence, br.discount_pence, br.discount_label
+       FROM booking_resources br JOIN resources r ON r.id = br.resource_id WHERE br.booking_id = ? ORDER BY r.name`,
+    )
+      .bind(id)
+      .all()
+  ).results;
 
-  return json({ ...booking, can_manage: access.canManage, ...(overrides ? { overrides } : {}), ...(group ? { group } : {}) });
+  return json({ ...booking, resources, can_manage: access.canManage, ...(overrides ? { overrides } : {}) });
 };

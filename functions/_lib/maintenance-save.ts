@@ -93,7 +93,8 @@ export async function saveMaintenance(env: Env, user: AuthUser, input: Maintenan
     statements.unshift(
       abortIf(
         env,
-        `EXISTS (SELECT 1 FROM bookings b WHERE ${activeBookingSql('b')} AND b.resource_id IN (${BLOCKED_SET_SQL})
+        `EXISTS (SELECT 1 FROM bookings b JOIN booking_resources brm ON brm.booking_id = b.id
+                 WHERE ${activeBookingSql('b')} AND brm.resource_id IN (${BLOCKED_SET_SQL})
                  AND b.starts_at < ? AND b.ends_at > ?${seen.length ? ` AND b.id NOT IN (${seen.map(() => '?').join(', ')})` : ''})`,
         record.resource_id, record.resource_id, record.resource_id, record.ends_at, record.starts_at, ...seen,
       ),

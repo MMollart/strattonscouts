@@ -3,13 +3,14 @@ import { error, json } from '../../../../_lib/http';
 import { requirePermission } from '../../../../_lib/auth';
 import { bookingTimeParams, sendEmail } from '../../../../_lib/email';
 import { formatGBP } from '@shared/pricing';
+import { resourceNamesSql } from '../../../../_lib/availability-sql';
 
 // Admin: email the customer a payment reminder (FR06). Payment itself is out of scope.
 export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }) => {
   const user = await requirePermission(env, request, 'bookings.manage');
   if (user instanceof Response) return user;
   const b = await env.DB.prepare(
-    `SELECT b.id, b.reference, b.status, b.starts_at, b.ends_at, b.total_amount_pence, r.name AS resource_name,
+    `SELECT b.id, b.reference, b.status, b.starts_at, b.ends_at, b.total_amount_pence, ${resourceNamesSql('b')} AS resource_name,
             u.email, u.full_name, o.name AS organisation_name
      FROM bookings b JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id
      LEFT JOIN organisations o ON o.id = b.organisation_id WHERE b.id = ?`,

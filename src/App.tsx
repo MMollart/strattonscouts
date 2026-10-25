@@ -21,6 +21,7 @@ import AdminEmails from './pages/admin/Emails';
 import SeriesDetail from './pages/SeriesDetail';
 import BookingDetails from './pages/BookingDetails';
 import BookResource from './pages/BookResource';
+import Checkout from './pages/Checkout';
 import AdminDashboard from './pages/admin/Dashboard';
 import AdminResources from './pages/admin/Resources';
 import AdminBookings from './pages/admin/Bookings';
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="/release-notes" element={<ReleaseNotes />} />
 
           <Route path="/book/:slug" element={<RequireAuth><BookResource /></RequireAuth>} />
+          <Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} />
           <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
           <Route path="/my-bookings" element={<RequireAuth><MyBookings /></RequireAuth>} />
           <Route path="/bookings/:id" element={<RequireAuth><BookingDetails /></RequireAuth>} />

@@ -1,5 +1,5 @@
 import type { Env } from './http';
-import { NOW_SQL } from './availability-sql';
+import { NOW_SQL, holdsResourceSql, resourceNamesSql } from './availability-sql';
 import { FINANCE_STATUSES, londonDayOf, usageDays, type FinanceStatus, type Period } from '@shared/finance';
 
 /**
@@ -26,7 +26,10 @@ export interface FinanceRow {
   reference: string;
   status: FinanceStatus;
   resource_id: string;
+  /** Every resource the booking holds, e.g. "Kitchen, Main Hall". */
   resource_name: string;
+  /** Each resource's share of the booking's value (from what it charged), for the breakdown by resource. */
+  lines: { resource_id: string; resource_name: string; share: number }[];
   category_id: string | null;
   category_label: string | null;
   organisation_id: string | null;
@@ -52,7 +55,7 @@ export async function loadFinanceRows(env: Env, f: FinanceFilters): Promise<Fina
   ];
   const binds: unknown[] = f.basis === 'usage' ? [f.period.endIso, f.period.startIso] : [f.period.startIso, f.period.endIso];
   if (f.resourceId) {
-    where.push('b.resource_id = ?');
+    where.push(holdsResourceSql('b'));
     binds.push(f.resourceId);
   }
   if (f.categoryId) {
@@ -67,23 +70,40 @@ export async function loadFinanceRows(env: Env, f: FinanceFilters): Promise<Fina
   const rows = await env.DB.prepare(
     `SELECT b.id, b.reference,
             CASE WHEN b.status = 'provisional' AND b.expires_at <= ${NOW_SQL} THEN 'expired' ELSE b.status END AS status,
-            b.resource_id, r.name AS resource_name, b.category_id, c.label AS category_label,
+            b.resource_id, ${resourceNamesSql('b')} AS resource_name, b.category_id, c.label AS category_label,
+            (SELECT json_group_array(json_object('resource_id', brf.resource_id, 'resource_name', rf.name, 'pence', brf.total_amount_pence))
+             FROM booking_resources brf JOIN resources rf ON rf.id = brf.resource_id WHERE brf.booking_id = b.id) AS lines_json,
             b.organisation_id, o.name AS organisation_name, b.starts_at, b.ends_at, b.created_at,
             b.total_amount_pence AS total_pence, COALESCE(b.base_amount_pence, b.total_amount_pence) AS base_pence,
             COALESCE(b.discount_pence, 0) AS discount_pence, json_extract(b.price_breakdown, '$.source') AS source
      FROM bookings b
-     JOIN resources r ON r.id = b.resource_id
      LEFT JOIN pricing_categories c ON c.id = b.category_id
      LEFT JOIN organisations o ON o.id = b.organisation_id
      WHERE ${where.join(' AND ')}
      ORDER BY b.starts_at`,
   )
     .bind(...binds)
-    .all<Omit<FinanceRow, 'value_pence' | 'base_in_period_pence' | 'discount_in_period_pence' | 'days'>>();
+    .all<Omit<FinanceRow, 'value_pence' | 'base_in_period_pence' | 'discount_in_period_pence' | 'days' | 'lines'> & { lines_json: string | null }>();
 
   const inPeriod = (day: string) => day >= f.period.from && day <= f.period.to;
   return rows.results
     .filter((r) => (FINANCE_STATUSES as readonly string[]).includes(r.status))
+    .map(({ lines_json, ...booking }) => {
+      const lines = shares(booking, lines_json);
+      if (!f.resourceId) return { ...booking, lines };
+      // Filtered to one resource: count only that resource's part of the booking.
+      const share = lines.find((l) => l.resource_id === f.resourceId)?.share ?? 1;
+      const part = (pence: number) => Math.round(pence * share);
+      return {
+        ...booking,
+        resource_id: f.resourceId,
+        resource_name: lines.find((l) => l.resource_id === f.resourceId)?.resource_name ?? booking.resource_name,
+        total_pence: part(booking.total_pence),
+        base_pence: part(booking.base_pence),
+        discount_pence: part(booking.discount_pence),
+        lines: lines.filter((l) => l.resource_id === f.resourceId).map((l) => ({ ...l, share: 1 })),
+      };
+    })
     .map((r) => {
       if (f.basis === 'booked') {
         return { ...r, value_pence: r.total_pence, base_in_period_pence: r.base_pence, discount_in_period_pence: r.discount_pence, days: [{ day: londonDayOf(r.created_at), pence: r.total_pence }] };
@@ -95,6 +115,14 @@ export async function loadFinanceRows(env: Env, f: FinanceFilters): Promise<Fina
     })
     // Defensive: the query already limits rows to ones touching the period.
     .filter((r) => r.days.length > 0);
+}
+
+/** Each resource's share of a booking's value, in proportion to what it charged (equal shares when all are free). */
+function shares(booking: { resource_id: string; resource_name: string }, json: string | null): FinanceRow['lines'] {
+  const raw = (json ? (JSON.parse(json) as { resource_id: string; resource_name: string; pence: number | null }[]) : []).filter((l) => l.resource_id);
+  if (!raw.length) return [{ resource_id: booking.resource_id, resource_name: booking.resource_name, share: 1 }];
+  const total = raw.reduce((n, l) => n + (l.pence ?? 0), 0);
+  return raw.map((l) => ({ resource_id: l.resource_id, resource_name: l.resource_name, share: total > 0 ? (l.pence ?? 0) / total : 1 / raw.length }));
 }
 
 interface Bucket { value_pence: number; count: number; average_pence: number }
@@ -116,9 +144,9 @@ export function summarise(rows: FinanceRow[], period: Period) {
   for (const s of FINANCE_STATUSES) totals[s].average_pence = totals[s].count ? Math.round(totals[s].value_pence / totals[s].count) : 0;
 
   const confirmed = rows.filter((r) => r.status === 'confirmed');
-  const breakdown = (key: (r: FinanceRow) => string, label: (r: FinanceRow) => string): BreakdownRow[] => {
+  const breakdown = (key: (r: FinanceRow) => string, label: (r: FinanceRow) => string, from: FinanceRow[] = rows): BreakdownRow[] => {
     const map = new Map<string, BreakdownRow>();
-    for (const r of rows) {
+    for (const r of from) {
       const k = key(r);
       if (!map.has(k)) map.set(k, { key: k, label: label(r), totals: Object.fromEntries(FINANCE_STATUSES.map((s) => [s, { value_pence: 0, count: 0 }])) as BreakdownRow['totals'] });
       const t = map.get(k)!.totals[r.status];
@@ -157,7 +185,12 @@ export function summarise(rows: FinanceRow[], period: Period) {
       discounted_count: confirmed.filter((r) => r.discount_pence > 0 && r.total_pence > 0).length,
       free_count: confirmed.filter((r) => r.total_pence === 0).length,
     },
-    by_resource: breakdown((r) => r.resource_id, (r) => r.resource_name),
+    // A booking of several resources counts once for each, with its value split between them.
+    by_resource: breakdown(
+      (r) => r.resource_id,
+      (r) => r.resource_name,
+      rows.flatMap((r) => r.lines.map((l) => ({ ...r, resource_id: l.resource_id, resource_name: l.resource_name, value_pence: Math.round(r.value_pence * l.share) }))),
+    ),
     by_category: breakdown((r) => r.category_id ?? 'none', (r) => r.category_label ?? 'No price group'),
     by_organisation: breakdown((r) => r.organisation_id ?? 'none', (r) => r.organisation_name ?? 'Personal bookings'),
     series: { unit: byMonth ? 'month' : 'day', points: keys.map((k) => ({ key: k, ...series.get(k)! })) },

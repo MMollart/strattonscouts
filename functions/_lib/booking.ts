@@ -1,14 +1,16 @@
 import type { Env } from './http';
 import { newId, now, bookingReference } from './http';
 import {
+  ANCESTORS_SQL,
   CONFLICTING_BOOKING_SQL,
   OVERLAPPING_CLOSURE_SQL,
   canonicalIso,
   closureBinds,
+  conflictBinds,
 } from './availability-sql';
 import { quotePrice } from './pricing-engine';
 import type { BookingStatus } from '@shared/types';
-import type { PriceBreakdown } from '@shared/pricing';
+import { combinePrices, type PriceBreakdown, type PriceLine } from '@shared/pricing';
 import { checkRestrictions } from './restrictions';
 import type { RestrictionKind, RuleViolation } from '@shared/availability-rules';
 import { OVERRIDABLE } from '@shared/availability-rules';
@@ -24,7 +26,10 @@ export interface RestrictionOverride {
 export interface CreateBookingParams {
   env: Env;
   userId: string;
+  /** The booking's (first) resource. */
   resourceId: string;
+  /** Further resources held by the same booking, for the same time. */
+  additionalResourceIds?: string[];
   startsAt: string;
   endsAt: string;
   actorId: string; // who is performing the action (customer or admin)
@@ -45,9 +50,10 @@ export interface BookingAcceptance {
   agreements: RequiredAgreement[];
 }
 
-/** The accepted agreements that apply to one resource. */
-export function agreementsFor(acceptance: BookingAcceptance | null | undefined, resourceId: string): RequiredAgreement[] {
-  return acceptance?.agreements.filter((a) => a.resource_ids.includes(resourceId)) ?? [];
+/** The accepted agreements that apply to any of these resources. */
+export function agreementsFor(acceptance: BookingAcceptance | null | undefined, resourceIds: string | string[]): RequiredAgreement[] {
+  const ids = Array.isArray(resourceIds) ? resourceIds : [resourceIds];
+  return acceptance?.agreements.filter((a) => a.resource_ids.some((id) => ids.includes(id))) ?? [];
 }
 
 export type CreateBookingFailure = {
@@ -62,6 +68,7 @@ export type CreateBookingResult =
       ok: true;
       bookingId: string;
       reference: string;
+      resourceIds: string[];
       status: BookingStatus;
       totalPence: number;
       startsAt: string;
@@ -71,18 +78,28 @@ export type CreateBookingResult =
     }
   | CreateBookingFailure;
 
+/** One resource a booking holds, with what it charges. */
+export interface BookingLine {
+  resourceId: string;
+  price: PriceBreakdown;
+}
+
 /** A fully resolved booking ready to be written. */
 export interface BookingDraft {
   id: string;
   reference: string;
   userId: string;
+  /** The booking's first resource. */
   resourceId: string;
+  /** Every resource the booking holds (the first is resourceId); defaults to resourceId alone. */
+  lines?: BookingLine[];
   startsAt: string;
   endsAt: string;
   status: BookingStatus;
   /** When a provisional hold lapses; null for every other status. */
   expiresAt: string | null;
   categoryId: string;
+  /** The whole booking's price (each resource's is in lines). */
   price: PriceBreakdown;
   organisationId: string | null;
   actorId: string;
@@ -105,14 +122,20 @@ export interface BookingDraft {
  */
 export function bookingInsertStatements(env: Env, d: BookingDraft): D1PreparedStatement[] {
   const ts = now();
+  const lines = draftLines(d);
+  // Every resource the booking holds must be free and open.
+  const guards = lines.map(() => `NOT EXISTS (${CONFLICTING_BOOKING_SQL}) AND NOT EXISTS (${OVERLAPPING_CLOSURE_SQL})`).join(' AND ');
+  const guardBinds = lines.flatMap((l) => [
+    ...conflictBinds(l.resourceId, d.startsAt, d.endsAt, d.id),
+    ...closureBinds(l.resourceId), d.endsAt, d.startsAt,
+  ]);
   const insertBooking = env.DB.prepare(
     `INSERT INTO bookings (id, reference, user_id, resource_id, starts_at, ends_at, status, category_id, pricing_model,
                            unit_price_pence, total_amount_pence, approved_by, cancelled_by, created_at, updated_at,
                            organisation_id, created_by, base_amount_pence, discount_pence, discount_label,
                            pricing_rate_id, pricing_discount_id, price_breakdown, organisation_pricing_id, expires_at, series_id, group_id)
      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-     WHERE NOT EXISTS (${CONFLICTING_BOOKING_SQL})
-       AND NOT EXISTS (${OVERLAPPING_CLOSURE_SQL})`,
+     WHERE ${guards}`,
   ).bind(
     d.id,
     d.reference,
@@ -139,20 +162,8 @@ export function bookingInsertStatements(env: Env, d: BookingDraft): D1PreparedSt
     d.expiresAt,
     d.seriesId ?? null,
     d.groupId ?? null,
-    d.resourceId,
-    d.resourceId,
-    d.resourceId,
-    d.endsAt,
-    d.startsAt,
-    d.id,
-    ...closureBinds(d.resourceId),
-    d.endsAt,
-    d.startsAt,
+    ...guardBinds,
   );
-
-  const insertAllocation = env.DB.prepare(
-    'INSERT INTO booking_resources (booking_id, resource_id) SELECT ?, ? WHERE EXISTS (SELECT 1 FROM bookings WHERE id = ?)',
-  ).bind(d.id, d.resourceId, d.id);
 
   const insertEvent = env.DB.prepare(
     `INSERT INTO booking_events (id, booking_id, event_type, actor_id, detail, created_at)
@@ -166,7 +177,30 @@ export function bookingInsertStatements(env: Env, d: BookingDraft): D1PreparedSt
     ).bind(newId('ovr'), d.id, o.kind, o.detail, d.actorId, o.reason, ts, d.id),
   );
 
-  return [insertBooking, insertAllocation, insertEvent, ...insertOverrides];
+  return [insertBooking, ...bookingLineStatements(env, d.id, lines, true), insertEvent, ...insertOverrides];
+}
+
+/** A draft's resources, each with its price. */
+export function draftLines(d: Pick<BookingDraft, 'resourceId' | 'lines' | 'price'>): BookingLine[] {
+  return d.lines?.length ? d.lines : [{ resourceId: d.resourceId, price: d.price }];
+}
+
+/**
+ * Rows recording which resources a booking holds and what each charges.
+ * `ifBookingExists` writes them only when the booking row was written.
+ */
+export function bookingLineStatements(env: Env, bookingId: string, lines: BookingLine[], ifBookingExists = false): D1PreparedStatement[] {
+  return lines.map((l) => {
+    const { lines: _nested, ...price } = l.price;
+    void _nested;
+    return env.DB.prepare(
+      `INSERT OR REPLACE INTO booking_resources (booking_id, resource_id, total_amount_pence, base_amount_pence, discount_pence, discount_label, price_breakdown)
+       SELECT ?, ?, ?, ?, ?, ?, ?${ifBookingExists ? ' WHERE EXISTS (SELECT 1 FROM bookings WHERE id = ?)' : ''}`,
+    ).bind(
+      bookingId, l.resourceId, price.total_pence, price.base_amount_pence, price.discount_pence, price.discount_label, JSON.stringify(price),
+      ...(ifBookingExists ? [bookingId] : []),
+    );
+  });
 }
 
 /**
@@ -190,94 +224,138 @@ export async function applyRestrictions(
   };
 }
 
-/** Resource checks and server-side price for a requested booking. */
+interface ResourceRow { id: string; name: string; is_active: number; requires_approval: number; provisional_expiry_hours: number | null }
+
+/**
+ * Resource checks and server-side price for a requested booking of one or
+ * more resources. Each resource is checked and priced on its own (rules,
+ * closures, price); the booking needs approval if any of them does.
+ */
 export async function prepareBooking(
   params: CreateBookingParams,
 ): Promise<{ ok: true; draft: BookingDraft; requiresApproval: boolean } | CreateBookingFailure> {
   const { env } = params;
   const startsAt = canonicalIso(params.startsAt);
   const endsAt = canonicalIso(params.endsAt);
+  const ids = [...new Set([params.resourceId, ...(params.additionalResourceIds ?? [])])];
+  const several = ids.length > 1;
 
-  const resource = await env.DB.prepare('SELECT id, is_active, requires_approval, provisional_expiry_hours FROM resources WHERE id = ?')
-    .bind(params.resourceId)
-    .first<{ id: string; is_active: number; requires_approval: number; provisional_expiry_hours: number | null }>();
-  if (!resource) return { ok: false, code: 'resource_not_found', message: 'Resource not found' };
-  if (!resource.is_active) return { ok: false, code: 'inactive', message: 'Resource is not available' };
+  const rows = await env.DB.prepare(
+    `SELECT id, name, is_active, requires_approval, provisional_expiry_hours FROM resources WHERE id IN (${ids.map(() => '?').join(', ')})`,
+  )
+    .bind(...ids)
+    .all<ResourceRow>();
+  const byId = new Map(rows.results.map((r) => [r.id, r]));
+  const resources = ids.map((id) => byId.get(id));
+  if (resources.some((r) => !r)) return { ok: false, code: 'resource_not_found', message: 'Resource not found' };
+  const list = resources as ResourceRow[];
+  // Say which resource a problem is with when the booking has several.
+  const about = (r: ResourceRow, message: string) => (several ? `${r.name}: ${message}` : message);
 
-  const quote = await quotePrice(env, {
-    resourceId: params.resourceId,
-    userId: params.userId,
-    organisationId: params.organisationId,
-    startsAt,
-    endsAt,
-  });
-  if (!quote.ok) {
-    return quote.code === 'not_found'
-      ? { ok: false, code: 'resource_not_found', message: quote.message }
-      : { ok: false, code: 'no_price', message: 'No price configured for your category' };
+  const inactive = list.find((r) => !r.is_active);
+  if (inactive) return { ok: false, code: 'inactive', message: about(inactive, 'Resource is not available') };
+
+  // A resource and one it is part of (a hall and the Whole Venue) cannot be
+  // booked together: the parent already includes the child.
+  if (several) {
+    const ancestors = await env.DB.batch<{ resource_id: string }>(ids.map((id) => env.DB.prepare(ANCESTORS_SQL).bind(id)));
+    for (const [i, child] of list.entries()) {
+      const parent = byId.get(ancestors[i].results.find((a) => ids.includes(a.resource_id))?.resource_id ?? '');
+      if (parent) {
+        return {
+          ok: false,
+          code: 'conflict',
+          message: `${child.name} is part of ${parent.name}, so they cannot be booked together. ${parent.name} already includes it.`,
+        };
+      }
+    }
   }
 
-  const restrictions = await applyRestrictions(env, { resourceId: params.resourceId, startsAt, endsAt, override: params.override });
-  if (!restrictions.ok) return restrictions;
+  const lines: BookingLine[] = [];
+  const overrides: BookingDraft['overrides'] = [];
+  let categoryId = '';
+  for (const r of list) {
+    const quote = await quotePrice(env, { resourceId: r.id, userId: params.userId, organisationId: params.organisationId, startsAt, endsAt });
+    if (!quote.ok) {
+      return quote.code === 'not_found'
+        ? { ok: false, code: 'resource_not_found', message: about(r, quote.message) }
+        : { ok: false, code: 'no_price', message: about(r, 'No price configured for your category') };
+    }
+    categoryId = quote.categoryId;
 
-  // Closures are checked first so the customer gets the more specific message;
-  // the atomic insert re-checks both conditions regardless.
-  const closure = await env.DB.prepare(OVERLAPPING_CLOSURE_SQL)
-    .bind(...closureBinds(params.resourceId), endsAt, startsAt)
-    .first();
-  if (closure) return { ok: false, code: 'closure', message: 'Resource is unavailable for this period' };
+    const restrictions = await applyRestrictions(env, { resourceId: r.id, startsAt, endsAt, override: params.override });
+    if (!restrictions.ok) return { ...restrictions, message: about(r, restrictions.message) };
+    overrides.push(...restrictions.overrides.map((o) => ({ ...o, detail: about(r, o.detail) })));
+
+    // Closures are checked first so the customer gets the more specific
+    // message; the atomic insert re-checks both conditions regardless.
+    const closure = await env.DB.prepare(OVERLAPPING_CLOSURE_SQL).bind(...closureBinds(r.id), endsAt, startsAt).first();
+    if (closure) return { ok: false, code: 'closure', message: about(r, 'Resource is unavailable for this period') };
+    if (several && (await env.DB.prepare(CONFLICTING_BOOKING_SQL).bind(...conflictBinds(r.id, startsAt, endsAt, '')).first())) {
+      return { ok: false, code: 'conflict', message: `${r.name} is already booked at this time, so nothing was booked.` };
+    }
+    lines.push({ resourceId: r.id, price: quote.breakdown });
+  }
 
   // A provisional hold (FR04) is confirmed later by an administrator, which
   // also stands in for approval on resources that require it.
-  let status: BookingStatus = resource.requires_approval ? 'pending_approval' : 'confirmed';
+  const requiresApproval = list.some((r) => r.requires_approval);
+  let status: BookingStatus = requiresApproval ? 'pending_approval' : 'confirmed';
   let expiresAt: string | null = null;
   if (params.provisional) {
     if (Date.parse(startsAt) <= Date.now()) {
       return { ok: false, code: 'restricted', message: 'A provisional booking must start in the future' };
     }
     status = 'provisional';
-    const hours = params.provisionalExpiryHours ?? (await provisionalHoldHours(env, resource.provisional_expiry_hours));
+    // The shortest hold of the resources booked.
+    const hours = params.provisionalExpiryHours ?? Math.min(...(await Promise.all(list.map((r) => provisionalHoldHours(env, r.provisional_expiry_hours)))));
     expiresAt = provisionalExpiry(Date.now(), hours, startsAt);
   }
+  const names = new Map(list.map((r) => [r.id, r.name]));
+  const price = combinePrices(lines.map((l): PriceLine => ({ ...l.price, resource_id: l.resourceId, resource_name: names.get(l.resourceId) ?? '' })));
   return {
     ok: true,
-    requiresApproval: !!resource.requires_approval,
+    requiresApproval,
     draft: {
       id: newId('bk'),
       reference: bookingReference(),
       userId: params.userId,
       resourceId: params.resourceId,
+      lines,
       startsAt,
       endsAt,
       status,
       expiresAt,
-      categoryId: quote.categoryId,
-      price: quote.breakdown,
+      categoryId,
+      price,
       organisationId: params.organisationId ?? null,
       actorId: params.actorId,
       eventType: status === 'confirmed' ? 'confirmed' : status === 'provisional' ? 'provisional' : 'created',
-      overrides: restrictions.overrides,
+      overrides,
     },
   };
 }
 
-/** Atomically create a single booking (see bookingInsertStatements). */
+/** Atomically create a booking of one or more resources (see bookingInsertStatements). */
 export async function createBookingAtomic(params: CreateBookingParams): Promise<CreateBookingResult> {
   const prepared = await prepareBooking(params);
   if (!prepared.ok) return prepared;
   const d = prepared.draft;
   const statements = bookingInsertStatements(params.env, d);
   if (params.acceptance) {
-    statements.push(...acceptanceStatements(params.env, params.acceptance.signature, [{ bookingId: d.id, agreements: agreementsFor(params.acceptance, d.resourceId) }]));
+    const ids = draftLines(d).map((l) => l.resourceId);
+    statements.push(...acceptanceStatements(params.env, params.acceptance.signature, [{ bookingId: d.id, agreements: agreementsFor(params.acceptance, ids) }]));
   }
   const [bookingResult] = await params.env.DB.batch(statements);
-  if (bookingResult.meta.changes !== 1) {
+  // A trigger also writes the main resource row, so a written booking reports more than one change.
+  if (!bookingResult.meta.changes) {
     return { ok: false, code: 'conflict', message: 'The requested period is no longer available' };
   }
   return {
     ok: true,
     bookingId: d.id,
     reference: d.reference,
+    resourceIds: draftLines(d).map((l) => l.resourceId),
     status: d.status,
     totalPence: d.price.total_pence,
     startsAt: d.startsAt,

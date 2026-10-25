@@ -3,7 +3,7 @@ import { error, json, newId, now } from '../../../_lib/http';
 import { requirePermission } from '../../../_lib/auth';
 import { parseBody } from '../../../_lib/request';
 import { abortIf, guardedBatch } from '../../../_lib/txn';
-import { amendStatements, planAmendments } from '../../../_lib/amend';
+import { amendStatements, linesFromPrice, planAmendments } from '../../../_lib/amend';
 import { loadAmendable } from '../../../_lib/amendments';
 import { bookingTimeParams, sendEmail } from '../../../_lib/email';
 import { amendmentDecisionSchema } from '@shared/validation';
@@ -14,6 +14,8 @@ interface Amendment {
   booking_id: string;
   status: string;
   to_resource_id: string;
+  /** JSON array of every resource requested (migration 0024); older requests have only to_resource_id. */
+  to_resource_ids: string | null;
   to_starts_at: string;
   to_ends_at: string;
   price_breakdown: string;
@@ -43,10 +45,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
       `UPDATE booking_amendments SET status = ?, decided_by = ?, decided_at = ?, decision_note = ?, updated_at = ? WHERE id = ? AND status = 'pending'`,
     ).bind(status, user.id, ts, input.note ?? null, ts, id);
 
+  const requested: string[] = amendment.to_resource_ids ? JSON.parse(amendment.to_resource_ids) : [amendment.to_resource_id];
+  const shown = input.decision === 'approve' ? requested : (booking.resource_ids ?? [booking.resource_id]);
   const customer = await env.DB.prepare(
-    'SELECT u.email, u.full_name, r.name AS resource_name FROM users u JOIN resources r ON r.id = ? WHERE u.id = ?',
+    `SELECT u.email, u.full_name,
+            (SELECT group_concat(name, ', ') FROM (SELECT name FROM resources WHERE id IN (SELECT value FROM json_each(?)) ORDER BY name)) AS resource_name
+     FROM users u WHERE u.id = ?`,
   )
-    .bind(input.decision === 'approve' ? amendment.to_resource_id : booking.resource_id, booking.user_id)
+    .bind(JSON.stringify(shown), booking.user_id)
     .first<{ email: string; full_name: string; resource_name: string }>();
 
   if (input.decision === 'reject') {
@@ -77,12 +83,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
   }
 
   if (!booking.active) return error('The booking is no longer active, so the change cannot be applied', 409, { code: 'inactive' });
-  const plan = await planAmendments(env, [{ target: booking, resourceId: amendment.to_resource_id, startsAt: amendment.to_starts_at, endsAt: amendment.to_ends_at }]);
+  const plan = await planAmendments(env, [{ target: booking, resourceIds: requested, startsAt: amendment.to_starts_at, endsAt: amendment.to_ends_at }]);
   if (!plan.ok) {
     return error(`The requested time is no longer available: ${plan.problems.map((p) => p.message).join(' ')}`, 409, { code: plan.problems[0].reason, problems: plan.problems });
   }
   const agreed: PriceBreakdown = JSON.parse(amendment.price_breakdown);
-  const change = { ...plan.planned[0], price: agreed };
+  // The customer pays the price agreed when they asked, resource by resource.
+  const change = { ...plan.planned[0], price: agreed, lines: linesFromPrice(agreed, requested) };
   const done = await guardedBatch(env, [
     ...amendStatements(env, change, user.id, { amendment_id: id, note: input.note ?? null }),
     decide('approved'),

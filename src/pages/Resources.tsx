@@ -2,7 +2,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../lib/useApi';
 import { Spinner, ErrorState, EmptyState } from '../components/ui';
 import { formatGBP } from '@shared/pricing';
-import { isWithin, parentOptions } from '@shared/hierarchy';
+import { isWithin } from '@shared/hierarchy';
 
 interface ResourceListItem {
   id: string;
@@ -17,13 +17,17 @@ interface ResourceListItem {
   ancestor_ids: string[];
 }
 
+interface Group { id: string; name: string; slug: string; depth: number }
+
 export default function Resources() {
   const { data, loading, error } = useApi<ResourceListItem[]>('/resources');
+  const { data: groupData } = useApi<Group[]>('/resources/groups');
+  const groups = groupData ?? [];
   const [params, setParams] = useSearchParams();
 
-  // Filter to a group such as Indoor: the group itself and everything beneath it.
-  const groups = parentOptions(data ?? []);
-  const within = groups.find((g) => g.node.slug === params.get('within'))?.node ?? null;
+  // Filter to a group such as Indoor (bookable or not): the group itself and everything beneath it.
+  const within = groups.find((g) => g.slug === params.get('within')) ?? null;
+  const choose = (slug: string | null) => setParams(slug ? { within: slug } : {}, { replace: true });
   const shown = (data ?? []).filter((r) => !within || isWithin(r.id, within.id, (id) => data?.find((x) => x.id === id)?.ancestor_ids ?? []));
 
   return (
@@ -36,23 +40,25 @@ export default function Resources() {
       {data && data.length === 0 && <div className="mt-6"><EmptyState title="No resources available yet" /></div>}
 
       {groups.length > 0 && (
-        <div className="mt-6 max-w-xs">
-          <label className="label" htmlFor="within">Show</label>
-          <select
-            id="within"
-            className="input"
-            value={within?.slug ?? ''}
-            onChange={(e) => setParams(e.target.value ? { within: e.target.value } : {}, { replace: true })}
-          >
-            <option value="">All resources</option>
-            {groups.map(({ node, depth }) => (
-              <option key={node.id} value={node.slug}>
-                {'\u00a0\u00a0'.repeat(depth)}{node.name} and everything in it
-              </option>
-            ))}
-          </select>
+        <div className="mt-6 flex flex-wrap gap-2" role="group" aria-label="Show resources in">
+          <button type="button" aria-pressed={!within} className={!within ? 'btn-primary' : 'btn-secondary'} onClick={() => choose(null)}>
+            All resources
+          </button>
+          {groups.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              aria-pressed={within?.id === g.id}
+              className={within?.id === g.id ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => choose(g.slug)}
+            >
+              {g.name}
+            </button>
+          ))}
         </div>
       )}
+
+      {data && data.length > 0 && shown.length === 0 && <div className="mt-8"><EmptyState title="Nothing to book in this group right now" /></div>}
 
       {data && data.length > 0 && (
         <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3" aria-live="polite">

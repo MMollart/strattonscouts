@@ -2,7 +2,7 @@ import type { Env } from '../../_lib/http';
 import { json } from '../../_lib/http';
 import { requirePermission } from '../../_lib/auth';
 import { decryptAtRest } from '../../_lib/crypto';
-import { activeBookingSql, canonicalIso, effectiveStatusSql } from '../../_lib/availability-sql';
+import { activeBookingSql, canonicalIso, effectiveStatusSql, holdsResourceSql, resourceNamesSql } from '../../_lib/availability-sql';
 
 // Admin: list/search/filter bookings including customer contact information.
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
@@ -25,12 +25,15 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   const clauses: string[] = [];
   const binds: unknown[] = [];
   if (status) { clauses.push(`${effectiveStatusSql('b')} = ?`); binds.push(status); }
-  if (resourceId) { clauses.push('b.resource_id = ?'); binds.push(resourceId); }
+  if (resourceId) { clauses.push(holdsResourceSql('b')); binds.push(resourceId); }
   if (organisationId) { clauses.push('b.organisation_id = ?'); binds.push(organisationId); }
   if (userId) { clauses.push('b.user_id = ?'); binds.push(userId); }
   if (resourceIds) {
     const ids = resourceIds.split(',').filter(Boolean).slice(0, 50);
-    if (ids.length) { clauses.push(`b.resource_id IN (${ids.map(() => '?').join(', ')})`); binds.push(...ids); }
+    if (ids.length) {
+      clauses.push(`EXISTS (SELECT 1 FROM booking_resources bri WHERE bri.booking_id = b.id AND bri.resource_id IN (${ids.map(() => '?').join(', ')}))`);
+      binds.push(...ids);
+    }
   }
   if (excludeInactive) { clauses.push(activeBookingSql('b')); }
   if (from && !Number.isNaN(Date.parse(from))) { clauses.push('b.ends_at >= ?'); binds.push(canonicalIso(from)); }
@@ -40,7 +43,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 
   const rows = await env.DB.prepare(
     `SELECT b.id, b.reference, ${effectiveStatusSql('b')} AS status, b.expires_at, b.series_id, b.group_id, b.resource_id, b.starts_at, b.ends_at, b.total_amount_pence,
-            r.name AS resource_name, u.full_name AS customer_name, u.email AS customer_email,
+            ${resourceNamesSql('b')} AS resource_name, (SELECT json_group_array(brl.resource_id) FROM booking_resources brl WHERE brl.booking_id = b.id) AS resource_ids,
+            u.full_name AS customer_name, u.email AS customer_email,
             u.phone_encrypted AS phone_encrypted, b.user_id, b.organisation_id, o.name AS organisation_name
      FROM bookings b JOIN resources r ON r.id = b.resource_id JOIN users u ON u.id = b.user_id
      LEFT JOIN organisations o ON o.id = b.organisation_id
@@ -53,6 +57,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   const results = await Promise.all(
     rows.results.map(async ({ phone_encrypted, ...row }) => ({
       ...row,
+      // Every resource the booking holds (the calendar shows it on each).
+      resource_ids: JSON.parse(String(row.resource_ids ?? '[]')) as string[],
       customer_phone: await decryptAtRest(phone_encrypted, key),
     })),
   );
