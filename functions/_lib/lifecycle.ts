@@ -1,6 +1,7 @@
 import type { Env } from './http';
 import { newId, now } from './http';
-import { bookingTimeParams, sendEmail, type EmailTemplate } from './email';
+import { bookingTimeParams, type EmailTemplate } from './email';
+import { sendBookingEmails, type BookingEmail } from './booking-emails';
 import { CONFLICTING_BOOKING_SQL, NOW_SQL, OVERLAPPING_CLOSURE_SQL, closureBinds, effectiveStatusSql } from './availability-sql';
 import { formatGBP } from '@shared/pricing';
 import type { BookingStatus } from '@shared/types';
@@ -27,6 +28,22 @@ const ALLOWED_FROM: Record<'confirmed' | 'rejected' | 'cancelled', BookingStatus
   cancelled: ['pending_approval', 'confirmed', 'provisional'],
 };
 
+/** What an administrator is told when a transition fails, by its code. */
+export function transitionErrorMessage(code: string | undefined): string {
+  switch (code) {
+    case 'conflict':
+      return 'This booking now clashes with another active booking, so it cannot be approved';
+    case 'closure':
+      return 'This booking overlaps a closure, so it cannot be approved';
+    case 'expired':
+      return 'This provisional booking has expired and its time has been released';
+    case 'not_found':
+      return 'Booking not found';
+    default:
+      return 'This booking has already been updated';
+  }
+}
+
 /**
  * Transition a booking to a new status, record a lifecycle event, and send the
  * relevant email. Returns false if the booking does not exist or the transition
@@ -40,8 +57,13 @@ export async function transitionBooking(
     to: Extract<BookingStatus, 'confirmed' | 'rejected' | 'cancelled'>;
     actorId: string;
     actorIsAdmin: boolean;
+    /**
+     * Send the customer's email now (default). A batch passes false, gets the
+     * email back instead, and sends them together with sendBookingEmails.
+     */
+    notify?: boolean;
   },
-): Promise<{ ok: boolean; code?: string }> {
+): Promise<{ ok: boolean; code?: string; email?: BookingEmail }> {
   const booking = await env.DB.prepare(
     `SELECT b.id, b.reference, b.resource_id, b.starts_at, b.ends_at, ${effectiveStatusSql('b')} AS status, b.total_amount_pence,
             r.name AS resource_name, u.email AS email, u.full_name AS full_name
@@ -122,10 +144,10 @@ export async function transitionBooking(
     args.to === 'confirmed'
       ? booking.status === 'provisional' ? 'booking_confirmation' : 'booking_approved'
       : args.to === 'rejected' ? 'booking_rejected' : 'booking_cancelled';
-  await sendEmail(env, {
+  const email: BookingEmail = {
     to: booking.email,
     bookingId: args.bookingId,
-    dedupeKey: `${args.bookingId}:${template}`,
+    startsAt: booking.starts_at,
     template,
     params: {
       customer_name: booking.full_name,
@@ -135,7 +157,8 @@ export async function transitionBooking(
       booking_cost: formatGBP(booking.total_amount_pence),
       booking_status: args.to,
     },
-  });
-
+  };
+  if (args.notify === false) return { ok: true, email };
+  await sendBookingEmails(env, [email]);
   return { ok: true };
 }

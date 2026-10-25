@@ -4,7 +4,7 @@ import { rateLimit, requirePermission } from '../../../../_lib/auth';
 import { parseBody } from '../../../../_lib/request';
 import { sendEmail } from '../../../../_lib/email';
 import { emailTestSchema } from '@shared/validation';
-import { contentTexts, SAMPLE_PARAMS, templateDefinition, unknownParams } from '@shared/email-templates';
+import { contentTexts, SAMPLE_PARAMS, sampleItems, templateDefinition, unknownParams } from '@shared/email-templates';
 
 // Admin: send the (unsaved) template with example values to yourself.
 export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }) => {
@@ -22,6 +22,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, params }
     template: def.key,
     params: { ...SAMPLE_PARAMS, customer_name: user.full_name, customer_email: user.email },
     content: { ...input, subject: `[Test] ${input.subject}` },
+    items: sampleItems(def.key),
   });
   return json({ ok: result.status === 'sent', status: result.status, to: user.email });
 };

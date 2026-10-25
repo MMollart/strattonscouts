@@ -52,7 +52,7 @@ export const ADMIN_MENU: AdminMenuGroup[] = [
     description: 'Who uses the venue.',
     items: [
       { to: '/admin/users', label: 'Users', description: 'Registered customers and their accounts.' },
-      { to: '/admin/organisations', label: 'Organisations', description: 'Groups that book together.' },
+      { to: '/admin/organisations', label: 'Organisations', description: 'Create organisations and manage their members.' },
       { to: '/admin/assets', label: 'Keys & equipment', description: 'Keys, fobs and equipment on loan.', permission: 'assets.manage' },
       { to: '/admin/admins', label: 'Administrators', description: 'Who can use these admin pages, and their role.', permission: 'admins.manage' },
     ],

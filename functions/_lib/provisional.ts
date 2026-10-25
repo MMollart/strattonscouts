@@ -1,7 +1,8 @@
 import type { Env } from './http';
 import { newId, now } from './http';
 import { getIntSetting } from './settings';
-import { bookingTimeParams, sendEmail } from './email';
+import { bookingTimeParams } from './email';
+import { sendBookingEmails, type BookingEmail } from './booking-emails';
 import { formatGBP } from '@shared/pricing';
 
 /**
@@ -40,7 +41,8 @@ interface ExpiringBooking {
  * Mark every provisional booking past its expiry as expired, record the event
  * and email the customer. Idempotent and safe to run concurrently: each
  * booking is moved by a status-guarded UPDATE, the event is written only when
- * that UPDATE changed the row, and the email uses a per-booking dedupe key.
+ * that UPDATE changed the row, and each person gets one email for the
+ * holds this run expired (see sendBookingEmails).
  * Returns the number of bookings this run expired.
  */
 export async function expireProvisionalBookings(env: Env, opts: { nowIso?: string; limit?: number } = {}): Promise<number> {
@@ -55,6 +57,7 @@ export async function expireProvisionalBookings(env: Env, opts: { nowIso?: strin
     .all<ExpiringBooking>();
 
   let expired = 0;
+  const emails: BookingEmail[] = [];
   for (const b of due.results) {
     const [updated] = await env.DB.batch([
       env.DB.prepare(
@@ -67,10 +70,10 @@ export async function expireProvisionalBookings(env: Env, opts: { nowIso?: strin
     ]);
     if (updated.meta.changes !== 1) continue;
     expired++;
-    await sendEmail(env, {
+    emails.push({
       to: b.email,
       bookingId: b.id,
-      dedupeKey: `${b.id}:provisional_expired`,
+      startsAt: b.starts_at,
       template: 'provisional_expired',
       params: {
         customer_name: b.full_name,
@@ -82,5 +85,7 @@ export async function expireProvisionalBookings(env: Env, opts: { nowIso?: strin
       },
     });
   }
+  // One email per person, however many of their holds lapsed in this run.
+  await sendBookingEmails(env, emails, `expiry:${nowIso}`);
   return expired;
 }

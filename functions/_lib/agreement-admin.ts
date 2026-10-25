@@ -63,7 +63,7 @@ export async function publishVersion(env: Env, user: AuthUser, templateId: strin
   try {
     if (type.includes('multipart/form-data')) {
       const form = await request.formData();
-      fields = { body: form.get('body'), effective_from: form.get('effective_from'), change_note: form.get('change_note') ?? '' };
+      fields = { body: form.get('body') ?? undefined, effective_from: form.get('effective_from'), change_note: form.get('change_note') ?? '' };
       const f = form.get('file');
       if (f instanceof File && f.size > 0) file = f;
     } else {
@@ -74,6 +74,9 @@ export async function publishVersion(env: Env, user: AuthUser, templateId: strin
   }
   const parsed = agreementVersionSchema.safeParse(fields);
   if (!parsed.success) return error('Validation failed', 400, parsed.error.flatten());
+
+  // A version is its wording, its PDF, or both.
+  if (parsed.data.body.length < 10 && !file) return error('Add the agreement wording (at least 10 characters) or attach a PDF', 400, { code: 'no_content' });
 
   let pdf: { key: string; name: string; sha: string } | null = null;
   if (file) {

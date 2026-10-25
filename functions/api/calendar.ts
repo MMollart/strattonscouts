@@ -35,6 +35,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   if (!resource) return error('Resource not found', 404);
   if (!resource.is_active) return json({ active: false, busy: [] });
 
-  const [busy, restrictions] = await Promise.all([loadBusyPeriods(env, resourceId, from, to), loadRestrictions(env, resourceId)]);
+  const [busy, loaded] = await Promise.all([loadBusyPeriods(env, resourceId, from, to), loadRestrictions(env, resourceId)]);
+  // Slots are checked one at a time, so length rules (which need the whole booking) are left out.
+  const restrictions = { minNoticeMinutes: loaded.minNoticeMinutes, maxAdvanceDays: loaded.maxAdvanceDays, rules: loaded.rules };
   return json({ active: true, busy, restrictions });
 };

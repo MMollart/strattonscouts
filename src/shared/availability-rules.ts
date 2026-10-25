@@ -5,17 +5,70 @@ import { addDays, fromLondon, toLondon, weekdayMondayFirst } from './londonTime'
  * recurring closed periods and opening hours. Pure; the API loads the rules.
  */
 
-export type RestrictionKind = 'min_notice' | 'max_advance' | 'opening_hours' | 'recurring_restriction';
+export type RestrictionKind = 'min_notice' | 'max_advance' | 'opening_hours' | 'recurring_restriction' | 'min_length' | 'max_length';
 
 /** Restrictions an authorised administrator may override. Exceptional closures and conflicts can never be overridden. */
-export const OVERRIDABLE: RestrictionKind[] = ['min_notice', 'max_advance', 'opening_hours', 'recurring_restriction'];
+export const OVERRIDABLE: RestrictionKind[] = ['min_notice', 'max_advance', 'opening_hours', 'recurring_restriction', 'min_length', 'max_length'];
 
 export const RESTRICTION_LABEL: Record<RestrictionKind, string> = {
   min_notice: 'Minimum notice',
   max_advance: 'Advance booking window',
   opening_hours: 'Opening hours',
   recurring_restriction: 'Recurring restriction',
+  min_length: 'Minimum length',
+  max_length: 'Maximum length',
 };
+
+/**
+ * How long a booking of a resource must or may be (null: no rule). Hours
+ * suit hall-style resources; nights (UK calendar days between start and end)
+ * suit nightly ones, where a minimum of 1 night means "overnight only".
+ */
+export interface BookingLength {
+  minDurationMinutes: number | null;
+  maxDurationMinutes: number | null;
+  minNights: number | null;
+  maxNights: number | null;
+}
+
+/** Nights a booking spans: UK calendar days from its start date to its end date. */
+export function nightsBetween(startsAt: string, endsAt: string): number {
+  const day = (iso: string) => Date.parse(`${toLondon(iso).date}T00:00:00Z`) / 86_400_000;
+  return Math.round(day(endsAt) - day(startsAt));
+}
+
+const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+
+/** Each length rule as a sentence, for customers. */
+export function describeLength(l: BookingLength): string[] {
+  const out: string[] = [];
+  if (l.minNights === 1 && !l.maxNights) out.push('Overnight bookings only: your booking must end on a later day than it starts.');
+  else if (l.minNights && l.maxNights) out.push(`Book for ${l.minNights === l.maxNights ? plural(l.minNights, 'night') : `${l.minNights} to ${plural(l.maxNights, 'night')}`}.`);
+  else if (l.minNights) out.push(`Book for at least ${plural(l.minNights, 'night')}.`);
+  else if (l.maxNights) out.push(`Book for at most ${plural(l.maxNights, 'night')}.`);
+  if (l.minDurationMinutes) out.push(`Book for at least ${humanMinutes(l.minDurationMinutes)}.`);
+  if (l.maxDurationMinutes) out.push(`Book for at most ${humanMinutes(l.maxDurationMinutes)}.`);
+  return out;
+}
+
+/** A booking's breaches of its resource's length rules. */
+export function evaluateLength(startsAt: string, endsAt: string, l: BookingLength): RuleViolation[] {
+  const minutes = (Date.parse(endsAt) - Date.parse(startsAt)) / 60_000;
+  const nights = nightsBetween(startsAt, endsAt);
+  const out: RuleViolation[] = [];
+  if (l.minNights && nights < l.minNights) {
+    out.push({
+      kind: 'min_length',
+      message: l.minNights === 1
+        ? 'This resource can only be booked overnight: the booking must end on a later day than it starts.'
+        : `This resource must be booked for at least ${plural(l.minNights, 'night')}.`,
+    });
+  }
+  if (l.maxNights && nights > l.maxNights) out.push({ kind: 'max_length', message: `This resource can be booked for at most ${plural(l.maxNights, 'night')}.` });
+  if (l.minDurationMinutes && minutes < l.minDurationMinutes) out.push({ kind: 'min_length', message: `This resource must be booked for at least ${humanMinutes(l.minDurationMinutes)}.` });
+  if (l.maxDurationMinutes && minutes > l.maxDurationMinutes) out.push({ kind: 'max_length', message: `This resource can be booked for at most ${humanMinutes(l.maxDurationMinutes)}.` });
+  return out;
+}
 
 export interface AvailabilityRule {
   id: string;
@@ -93,6 +146,11 @@ export function evaluateRestrictions(params: {
   minNoticeMinutes: number | null;
   maxAdvanceDays: number | null;
   rules: AvailabilityRule[];
+  /**
+   * Length rules apply to a whole booking. Left out when checking calendar
+   * slots, which are only part of a booking.
+   */
+  length?: BookingLength;
 }): RuleViolation[] {
   const start = Date.parse(params.startsAt);
   const end = Date.parse(params.endsAt);
@@ -104,6 +162,7 @@ export function evaluateRestrictions(params: {
   if (params.maxAdvanceDays && start - params.now > params.maxAdvanceDays * 86_400_000) {
     violations.push({ kind: 'max_advance', message: `This resource can only be booked up to ${params.maxAdvanceDays} days ahead.` });
   }
+  if (params.length) violations.push(...evaluateLength(params.startsAt, params.endsAt, params.length));
 
   for (const rule of params.rules.filter((r) => r.rule_type === 'closed')) {
     if (windows(rule, params.startsAt, params.endsAt).some(([ws, we]) => ws < end && start < we)) {

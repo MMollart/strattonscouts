@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useApi } from '../lib/useApi';
 import { ErrorState } from './ui';
 
@@ -22,11 +22,14 @@ export function OrganisationForm({
   submitLabel,
   onSubmit,
   onCancel,
+  children,
 }: {
   initial: OrganisationDraft;
   submitLabel: string;
   onSubmit: (draft: OrganisationDraft) => Promise<void>;
   onCancel?: () => void;
+  /** Extra fields shown after the details, e.g. the first manager when an administrator creates one. */
+  children?: ReactNode;
 }) {
   const { data: types } = useApi<Option[]>('/organisation-types');
   const { data: categories } = useApi<Option[]>('/categories');
@@ -78,6 +81,7 @@ export function OrganisationForm({
         </div>
       </div>
       <p className="text-xs text-gray-500">Administrators may check and correct the pricing category.</p>
+      {children}
       {error && <ErrorState message={error} />}
       <div className="flex gap-2">
         <button className="btn-primary" disabled={saving}>{saving ? 'Saving…' : submitLabel}</button>
