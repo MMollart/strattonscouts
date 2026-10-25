@@ -7,7 +7,7 @@ import { addDays, londonToday } from '@shared/londonTime';
 import { formatGBP } from '@shared/pricing';
 
 /**
- * Invoices (migration 0022). An administrator sends the hirer an invoice for
+ * Invoices (migration 0023). An administrator sends the hirer an invoice for
  * a confirmed, chargeable booking. The invoice keeps a snapshot of the price;
  * sending again while the booking's price is unchanged resends the same
  * invoice, and a changed price (after an amendment) issues a new number.

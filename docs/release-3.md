@@ -12,7 +12,7 @@ apply (`npm run db:migrate:remote`) before the code that uses it is deployed.
 | `0019_agreements.sql` | FR20 Booking agreements & digital acceptance |
 | `0020_financial_reporting.sql` | FR10 Financial reporting |
 | `0021_calendar_feeds.sql` | FR17 External calendar integration |
-| `0022_invoices.sql` | Invoicing the hirer |
+| `0023_invoices.sql` | Invoicing the hirer |
 
 ## FR11 – Booking & administration audit history
 
@@ -422,5 +422,5 @@ still out of scope; the email carries the *Payment instructions* setting.
   send is in the email history, and failed sends are retried like any other.
 - *Audit.* Every send writes a `booking.invoice_sent` booking event, which
   reaches the audit history with the invoice number and amount.
-- *Migration 0022* adds the `invoices` table only, so it is safe to apply
+- *Migration 0023* adds the `invoices` table only, so it is safe to apply
   before the code is deployed.
