@@ -19,6 +19,7 @@ export type EmailTemplateKey =
   | 'provisional_booking'
   | 'provisional_expired'
   | 'payment_reminder'
+  | 'booking_invoice'
   | 'organisation_invitation'
   | 'password_reset'
   | 'maintenance_notice';
@@ -95,6 +96,11 @@ export const PARAM_DESCRIPTION: Record<string, string> = {
   expiry_date: 'When a provisional hold expires',
   decision_note: "The administrator's message",
   payment_instructions: 'Payment instructions from Settings',
+  invoice_number: 'Invoice number, e.g. INV-000123',
+  invoice_date: 'Date the invoice was issued',
+  invoice_due_date: 'Date payment is due by',
+  invoice_list_price: 'Price before discount (blank when there is no discount)',
+  invoice_discount: 'The discount and its name (blank when there is none)',
   inviter_name: 'Who sent the invitation',
   invitation_role: 'Role offered (manager or member)',
   invitation_url: 'Link to accept or decline',
@@ -238,6 +244,35 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
     extra_params: ['payment_instructions'],
   },
   {
+    key: 'booking_invoice',
+    name: 'Invoice',
+    trigger: 'An administrator sends an invoice from the booking page',
+    subject: 'Invoice {{ invoice_number }} for booking {{ booking_reference }}',
+    badge: { label: 'Invoice', colour: 'blue' },
+    title: 'Your invoice.',
+    body: paras(
+      HI,
+      'Thank you for booking with {{ venue_name }}. Here is your invoice. Please pay by {{ invoice_due_date }}.',
+      '{{ payment_instructions }}',
+      'Please quote {{ invoice_number }} with your payment.',
+    ),
+    detail_card: lines(
+      'Invoice: {{ invoice_number }}',
+      'Invoice date: {{ invoice_date }}',
+      'Billed to: {{ organisation_name }}',
+      'Booking: {{ resource_name }}',
+      WHEN,
+      REF,
+      'Price: {{ invoice_list_price }}',
+      'Discount: {{ invoice_discount }}',
+      'Amount due: {{ booking_cost }}',
+      'Due by: {{ invoice_due_date }}',
+    ),
+    thanks: THANKS,
+    footer: FOOTER,
+    extra_params: ['payment_instructions', 'invoice_number', 'invoice_date', 'invoice_due_date', 'invoice_list_price', 'invoice_discount'],
+  },
+  {
     key: 'maintenance_notice',
     name: 'Maintenance notice',
     trigger: 'An administrator notifies customers whose bookings maintenance affects',
@@ -296,7 +331,7 @@ export const TEMPLATE_DEFINITIONS: TemplateDefinition[] = [
 
 const BOOKING_TEMPLATES = new Set<EmailTemplateKey>([
   'booking_request_received', 'booking_approved', 'booking_rejected', 'booking_confirmation', 'booking_amended',
-  'booking_amendment_rejected', 'booking_cancelled', 'provisional_booking', 'provisional_expired', 'payment_reminder', 'maintenance_notice',
+  'booking_amendment_rejected', 'booking_cancelled', 'provisional_booking', 'provisional_expired', 'payment_reminder', 'booking_invoice', 'maintenance_notice',
 ]);
 
 export function templateDefinition(key: string): TemplateDefinition | undefined {
@@ -440,6 +475,11 @@ export const SAMPLE_PARAMS: Record<string, string> = {
   invitation_url: 'https://example.com/invitations/sample',
   invitation_expiry: '13 Jan 2026',
   reset_url: 'https://example.com/reset-password?token=sample',
+  invoice_number: 'INV-000123',
+  invoice_date: 'Mon, 15 Dec 2025',
+  invoice_due_date: 'Mon, 29 Dec 2025',
+  invoice_list_price: '£40.00',
+  invoice_discount: '−£20.00 (Scouts discount)',
   maintenance_title: 'Main Hall floor resurfacing',
   maintenance_period: '6 Jan 2026, 08:00 to 6 Jan 2026, 18:00',
   maintenance_message: 'The hall will be closed while the floor is sanded and sealed.',

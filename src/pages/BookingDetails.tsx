@@ -11,6 +11,7 @@ import { RESTRICTION_LABEL, type RestrictionKind } from '@shared/availability-ru
 import { HistoryPanel } from '../components/HistoryPanel';
 import { AcceptedAgreements } from '../components/AcceptedAgreements';
 import { AddToCalendar } from '../components/AddToCalendar';
+import { InvoicePanel } from '../components/InvoicePanel';
 
 interface BookingDetail {
   id: string;
@@ -181,6 +182,7 @@ export default function BookingDetails() {
         <button className="btn-secondary mt-6 mr-2" onClick={sendReminder} disabled={working}>Send payment reminder</button>
       )}
       {notice && <p className="mt-4 text-sm font-bold text-scout-green" role="status">{notice}</p>}
+      {can('bookings.manage') && <InvoicePanel booking={data} />}
 
       {canCancel && (
         <button className="btn-danger mt-6" onClick={cancel} disabled={working}>
